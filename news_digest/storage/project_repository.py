@@ -69,7 +69,8 @@ class ProjectRepository:
             await db.commit()
 
     async def save_rules(self, *, project_id: int, rules: dict[str, Any]) -> None:
-        encoded = json.dumps(rules, ensure_ascii=False)
+        normalized_rules = _validate_rules(rules)
+        encoded = json.dumps(normalized_rules, ensure_ascii=False)
         async with aiosqlite.connect(self.database_path) as connection:
             await connection.execute(
                 """
@@ -97,6 +98,7 @@ class ProjectRepository:
         if source_mode not in {"shared", "project"}:
             raise ValueError("source_mode must be 'shared' or 'project'.")
         clean_url = url.strip()
+        _validate_feed_url(clean_url)
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute(
                 """
@@ -279,3 +281,53 @@ def _validate_timezone(value: str) -> ZoneInfo:
         return ZoneInfo(value)
     except (ZoneInfoNotFoundError, ValueError) as exc:
         raise ValueError(f"Unknown timezone: {value}") from exc
+
+
+
+def _validate_rules(rules: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "topics",
+        "geographies",
+        "excluded_topics",
+        "audience",
+        "style_guide",
+        "min_significance",
+        "max_age_hours",
+    }
+    unknown = set(rules) - allowed
+    if unknown:
+        raise ValueError(f"Unsupported editorial rule keys: {', '.join(sorted(unknown))}.")
+    normalized = dict(rules)
+    for key in ("topics", "geographies", "excluded_topics"):
+        values = normalized.get(key, [])
+        if not isinstance(values, list) or any(
+            not isinstance(value, str) or not value.strip() for value in values
+        ):
+            raise ValueError(f"{key} must be a list of non-empty strings.")
+        normalized[key] = list(dict.fromkeys(value.strip() for value in values))
+    for key, minimum, maximum in (
+        ("min_significance", 0, 100),
+        ("max_age_hours", 1, 8760),
+    ):
+        if key in normalized:
+            value = normalized[key]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{key} must be an integer.")
+            if not minimum <= value <= maximum:
+                raise ValueError(f"{key} must be between {minimum} and {maximum}.")
+    for key, maximum in (("audience", 1000), ("style_guide", 4000)):
+        if key in normalized:
+            value = normalized[key]
+            if not isinstance(value, str) or len(value) > maximum:
+                raise ValueError(f"{key} must be text no longer than {maximum} characters.")
+    return normalized
+
+
+def _validate_feed_url(value: str) -> None:
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(value)
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        raise ValueError("Feed URL must be an absolute HTTP(S) URL.")
+    if parts.username or parts.password:
+        raise ValueError("Credentials are not allowed in feed URLs.")
