@@ -31,6 +31,17 @@ async def test_articles_are_shared_and_project_links_are_isolated(tmp_path: Path
     assert second[0].inserted is False
     assert first[0].article_id == second[0].article_id
 
+    import aiosqlite
+
+    async with aiosqlite.connect(database_path) as db:
+        await db.execute(
+            "INSERT INTO projects (slug, name) VALUES ('project-one', 'Project One')"
+        )
+        await db.execute(
+            "INSERT INTO projects (slug, name) VALUES ('project-two', 'Project Two')"
+        )
+        await db.commit()
+
     await repository.attach_to_project(
         project_id=1,
         article_id=first[0].article_id,
@@ -42,10 +53,9 @@ async def test_articles_are_shared_and_project_links_are_isolated(tmp_path: Path
         relevance_score=0.4,
     )
 
-    import aiosqlite
-
     async with aiosqlite.connect(database_path) as db:
-        rows = await db.execute_fetchall(
+        cursor = await db.execute(
             "SELECT project_id, relevance_score FROM project_articles ORDER BY project_id"
         )
+        rows = await cursor.fetchall()
     assert rows == [(1, 0.9), (2, 0.4)]
