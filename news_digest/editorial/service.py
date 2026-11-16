@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
@@ -198,7 +198,7 @@ def _preflight_rejection(article: NormalizedArticle, brief: EditorialBrief, *, n
         current = current.replace(tzinfo=UTC)
     if article.published_at:
         try:
-            published = datetime.fromisoformat(article.published_at.strip().replace("Z", "+00:00"))
+            published = datetime.fromisoformat(article.published_at.strip())
             if published.tzinfo is None:
                 published = published.replace(tzinfo=UTC)
             age = current - published.astimezone(UTC)
@@ -209,7 +209,7 @@ def _preflight_rejection(article: NormalizedArticle, brief: EditorialBrief, *, n
                 return f"Article is older than the project limit ({brief.max_age_hours} hours)."
             if age < timedelta(hours=-6):
                 return "Article publication date is more than 6 hours in the future."
-    searchable_text = " ".join((article.title, article.description, article.content)).casefold()
+    searchable_text = f"{article.title} {article.description} {article.content}".casefold()
     for excluded in brief.excluded_topics:
         term = " ".join(excluded.split()).casefold()
         if term and term in searchable_text:
