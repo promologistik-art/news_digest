@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import UTC, datetime
 
 import aiosqlite
 
-from news_digest.ai.routerai import RouterAIClient
+from news_digest.ai.routerai import RouterAIClient, RouterAIError
 from news_digest.collection.normalization import NormalizedArticle
 from news_digest.collection.rss import RSSCollector
 from news_digest.config import Settings
 from news_digest.editorial.models import EditorialBrief
-from news_digest.editorial.service import EditorialService
+from news_digest.editorial.service import EditorialError, EditorialService
 from news_digest.publishing.telegram import TelegramPublisher
 from news_digest.storage.database import Database
 from news_digest.storage.editorial_repository import EditorialRepository
@@ -82,7 +83,7 @@ async def run_once(settings: Settings) -> dict[str, int]:
                         project_id=project_id, article_id=article_id
                     ):
                         totals["queued"] += 1
-                except Exception:
+                except (RouterAIError, EditorialError, sqlite3.Error, ValueError):
                     logger.exception(
                         "Editorial processing failed for project=%s article=%s",
                         project_id, article_id,
