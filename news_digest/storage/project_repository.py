@@ -56,6 +56,25 @@ class ProjectRepository:
              "language": r[4], "timezone": r[5]} for r in rows
         ]
 
+    async def update_project_settings(
+        self, *, project_id: int, language: str, timezone: str
+    ) -> None:
+        clean_language = language.strip()
+        if not clean_language or len(clean_language) > 16:
+            raise ValueError("Project language must contain 1 to 16 characters.")
+        _validate_timezone(timezone)
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE projects SET language=?, timezone=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (clean_language, timezone, project_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Project does not exist.")
+            await db.commit()
+
     async def set_project_status(self, *, project_id: int, status: str) -> None:
         if status not in {"draft", "active", "paused", "archived"}:
             raise ValueError("Unsupported project status.")
