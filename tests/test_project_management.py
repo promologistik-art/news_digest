@@ -92,3 +92,61 @@ async def test_only_active_projects_are_selected_by_status(tmp_path) -> None:
     await repository.set_project_status(project_id=project_id, status="active")
     with pytest.raises(ValueError, match="Unsupported"):
         await repository.set_project_status(project_id=project_id, status="running")
+
+
+
+@pytest.mark.asyncio
+async def test_editorial_rules_are_validated_and_normalized(tmp_path) -> None:
+    path = tmp_path / "rules-validation.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="rules", name="Rules"
+    )
+    await repository.save_rules(
+        project_id=project_id,
+        rules={
+            "topics": [" кино ", "кино"],
+            "geographies": ["Россия"],
+            "excluded_topics": [],
+            "min_significance": 60,
+            "max_age_hours": 48,
+        },
+    )
+    assert await repository.get_rules(project_id=project_id) == {
+        "topics": ["кино"],
+        "geographies": ["Россия"],
+        "excluded_topics": [],
+        "min_significance": 60,
+        "max_age_hours": 48,
+    }
+    with pytest.raises(ValueError, match="min_significance"):
+        await repository.save_rules(
+            project_id=project_id, rules={"min_significance": 101}
+        )
+    with pytest.raises(ValueError, match="topics"):
+        await repository.save_rules(
+            project_id=project_id, rules={"topics": ["", 42]}
+        )
+    with pytest.raises(ValueError, match="Unsupported"):
+        await repository.save_rules(
+            project_id=project_id, rules={"unknown": True}
+        )
+
+
+@pytest.mark.asyncio
+async def test_feed_url_must_be_absolute_http_url(tmp_path) -> None:
+    path = tmp_path / "source-validation.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="feeds", name="Feeds"
+    )
+    with pytest.raises(ValueError, match="HTTP"):
+        await repository.add_source(
+            project_id=project_id, url="file:///etc/passwd"
+        )
+    with pytest.raises(ValueError, match="Credentials"):
+        await repository.add_source(
+            project_id=project_id, url="https://user:pass@example.com/feed"
+        )
