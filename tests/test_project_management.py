@@ -153,3 +153,24 @@ async def test_feed_url_must_be_absolute_http_url(tmp_path) -> None:
         await repository.add_source(
             project_id=project_id, url="https://user:pass@example.com/feed"
         )
+
+
+
+@pytest.mark.asyncio
+async def test_monthly_ai_budget_is_validated(tmp_path) -> None:
+    path = tmp_path / "ai-budget-rules.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="ai-budget", name="AI Budget"
+    )
+    await repository.save_rules(
+        project_id=project_id, rules={"monthly_ai_budget_rub": 25.5}
+    )
+    assert (await repository.get_rules(project_id=project_id))[
+        "monthly_ai_budget_rub"
+    ] == 25.5
+    with pytest.raises(ValueError, match="non-negative"):
+        await repository.save_rules(
+            project_id=project_id, rules={"monthly_ai_budget_rub": -1}
+        )
