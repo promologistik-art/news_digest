@@ -19,6 +19,7 @@ HELP = """Управление новостными проектами:
 /news projects
 /news create slug | Название проекта
 /news status ID | active или paused
+/news settings ID | language | timezone
 /news sources ID
 /news addsource ID | RSS URL | Название источника | shared/project
 /news source-toggle ID | SOURCE_ID | on/off
@@ -94,6 +95,16 @@ async def _dispatch(
             head_user_id=user_id, project_id=int(project_text), status=status.lower()
         )
         return f"Статус проекта #{project_text}: {status.lower()}."
+
+    if command == "settings":
+        project_text, language, timezone = _fields(raw, 3)
+        await service.update_project_settings(
+            head_user_id=user_id,
+            project_id=int(project_text),
+            language=language,
+            timezone=timezone,
+        )
+        return f"Настройки проекта #{project_text}: язык {language}, часовой пояс {timezone}."
 
     if command == "sources":
         (project_text,) = _fields(raw, 1)
