@@ -39,7 +39,10 @@ async def test_project_source_crud_and_settings_are_isolated(tmp_path) -> None:
         project_id=project_a, rules={"topics": ["books"], "max_age_hours": 48}
     )
     assert await repository.get_rules(project_id=project_a) == {
-        "topics": ["books"], "max_age_hours": 48
+        "topics": ["books"],
+        "geographies": [],
+        "excluded_topics": [],
+        "max_age_hours": 48,
     }
     assert await repository.get_rules(project_id=project_b) == {}
 
