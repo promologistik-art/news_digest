@@ -60,13 +60,14 @@ async def test_save_result_persists_project_decision_and_model_usage(tmp_path) -
     )
 
     async with aiosqlite.connect(database_path) as connection:
-        article_row = await connection.execute_fetchone(
+        article_cursor = await connection.execute(
             """
             SELECT relevance_score, significance_score, editorial_status,
                    editorial_payload
             FROM project_articles WHERE project_id = 1 AND article_id = 1
             """
         )
+        article_row = await article_cursor.fetchone()
         usage_rows = await connection.execute_fetchall(
             """
             SELECT provider, model, operation, total_tokens
