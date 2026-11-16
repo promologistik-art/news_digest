@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS publication_queue (
     scheduled_for TEXT,
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
+    lease_until TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, article_id)
 );
@@ -150,6 +151,20 @@ CREATE TABLE IF NOT EXISTS publication_history (
     caption_length INTEGER,
     status TEXT NOT NULL,
     error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS publication_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue_id INTEGER NOT NULL REFERENCES publication_queue(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    telegram_message_id TEXT,
+    caption_length INTEGER,
+    error TEXT,
+    published_at TEXT,
+    UNIQUE(queue_id, target_id)
 );
 
 CREATE TABLE IF NOT EXISTS ai_usage (
@@ -177,6 +192,9 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.path) as connection:
             await connection.executescript(SCHEMA)
+            queue_columns = await connection.execute_fetchall("PRAGMA table_info(publication_queue)")
+            if "lease_until" not in {column[1] for column in queue_columns}:
+                await connection.execute("ALTER TABLE publication_queue ADD COLUMN lease_until TEXT")
             columns = await connection.execute_fetchall("PRAGMA table_info(ai_usage)")
             if "total_tokens" not in {column[1] for column in columns}:
                 await connection.execute("ALTER TABLE ai_usage ADD COLUMN total_tokens INTEGER")
