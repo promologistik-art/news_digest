@@ -44,9 +44,9 @@ def canonicalize_url(url: str) -> str:
     if parts.username or parts.password:
         raise ValueError("Credentials are not allowed in article URLs.")
     port = parts.port
-    netloc = host
+    netloc = f"[{host}]" if ":" in host else host
     if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
-        netloc = f"{host}:{port}"
+        netloc = f"{netloc}:{port}"
     query = [
         (key, item)
         for key, item in parse_qsl(parts.query, keep_blank_values=True)
