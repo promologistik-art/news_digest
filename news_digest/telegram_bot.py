@@ -27,7 +27,7 @@ async def _news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     settings: Settings = context.application.bot_data["settings"]
-    admins = settings.telegram_admin_ids_set
+    admins = settings.admin_telegram_ids_set
     if not admins:
         await message.reply_text(
             "Команды отключены: в окружении бота не задан ADMIN_TELEGRAM_IDS."
