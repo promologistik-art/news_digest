@@ -52,6 +52,15 @@ class KontentFabrikProjectService:
             language=language, timezone=timezone,
         )
 
+    async def update_project_settings(
+        self, *, head_user_id: int, project_id: int,
+        language: str, timezone: str,
+    ) -> None:
+        await self._owned_binding(head_user_id=head_user_id, project_id=project_id)
+        await self.projects.update_project_settings(
+            project_id=project_id, language=language, timezone=timezone
+        )
+
     async def set_project_status(
         self, *, head_user_id: int, project_id: int, status: str
     ) -> None:
