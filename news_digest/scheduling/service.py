@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime
 
 from news_digest.config import Settings
+from news_digest.storage.database import Database
 from news_digest.storage.project_repository import ProjectRepository
 from news_digest.worker import run_once
 
@@ -20,6 +21,7 @@ class ProjectScheduler:
         self.projects = ProjectRepository(settings.database_path)
 
     async def run_forever(self) -> None:
+        await Database(self.settings.database_path).initialize()
         logger.info("Project scheduler started (poll=%ss)", self.poll_seconds)
         while True:
             await self.run_due()
