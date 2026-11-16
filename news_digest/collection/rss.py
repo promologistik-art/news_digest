@@ -11,7 +11,7 @@ from datetime import timezone
 from email.utils import format_datetime
 from time import struct_time
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import httpx
@@ -138,6 +138,8 @@ def _entry_to_article(entry: Any) -> NormalizedArticle | None:
     content = content_items[0].get("value", "") if content_items else description
     published_at = _published_at(entry)
     image_url = _image_url(entry)
+    if image_url:
+        image_url = urljoin(link, image_url)
     try:
         return normalize_article(
             url=link,
