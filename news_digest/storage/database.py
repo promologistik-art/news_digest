@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     model TEXT NOT NULL,
     operation TEXT NOT NULL,
     input_tokens INTEGER,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER,
     total_tokens INTEGER,
     cost_amount REAL,
@@ -224,6 +225,10 @@ class Database:
             if "cost_estimated" not in existing_usage_columns:
                 await connection.execute(
                     "ALTER TABLE ai_usage ADD COLUMN cost_estimated INTEGER NOT NULL DEFAULT 0"
+                )
+            if "cached_input_tokens" not in existing_usage_columns:
+                await connection.execute(
+                    "ALTER TABLE ai_usage ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0"
                 )
             await connection.execute(
                 """
