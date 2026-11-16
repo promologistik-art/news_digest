@@ -27,7 +27,7 @@ async def run_once(settings: Settings) -> dict[str, int]:
     database = Database(settings.database_path)
     await database.initialize()
     queue = PublicationQueue(settings.database_path)
-    collector = RSSCollector(settings)
+    collector = RSSCollector()
     totals = {"collected": 0, "assessed": 0, "queued": 0, "published": 0, "failed": 0}
 
     async with aiosqlite.connect(settings.database_path) as db:
@@ -38,7 +38,7 @@ async def run_once(settings: Settings) -> dict[str, int]:
     async with RouterAIClient(settings) as ai:
         editorial = EditorialService(ai, EditorialRepository(settings.database_path))
         for project_id, project_name, language in projects:
-            totals["collected"] += await collector.collect_project(project_id, database)
+            totals["collected"] += await collector.collect_project(project_id, database, settings)
             async with aiosqlite.connect(settings.database_path) as db:
                 rules_cursor = await db.execute(
                     "SELECT rules_json FROM project_rules WHERE project_id=?", (project_id,)
