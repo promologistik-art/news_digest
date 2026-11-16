@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from news_digest.ai.routerai import RouterAIClient
 from news_digest.collection.normalization import NormalizedArticle
 from news_digest.editorial.models import EditorialAssessment, EditorialBrief, EditorialDraft
+from news_digest.storage.editorial_repository import EditorialRepository
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,32 @@ class EditorialResult:
 class EditorialService:
     """Runs independent editorial decisions for each project's own brief."""
 
-    def __init__(self, ai: RouterAIClient) -> None:
+    def __init__(
+        self,
+        ai: RouterAIClient,
+        repository: EditorialRepository | None = None,
+    ) -> None:
         self.ai = ai
+        self.repository = repository
+
+    async def process_and_save(
+        self,
+        article: NormalizedArticle,
+        brief: EditorialBrief,
+        *,
+        project_id: int,
+        article_id: int,
+    ) -> EditorialResult:
+        """Run editorial processing and persist the outcome and token usage."""
+        if self.repository is None:
+            raise EditorialError("EditorialRepository is required to persist results.")
+        result = await self.process(article, brief)
+        await self.repository.save_result(
+            project_id=project_id,
+            article_id=article_id,
+            result=result,
+        )
+        return result
 
     async def process(
         self,
