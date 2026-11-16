@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -157,7 +157,9 @@ class ProjectRepository:
         now = datetime.now(zone)
         if not croniter.is_valid(cron_expression):
             raise ValueError("Invalid cron expression.")
-        next_run = croniter(cron_expression, now).get_next(datetime).isoformat()
+        next_run = croniter(cron_expression, now).get_next(datetime).astimezone(UTC).replace(
+            tzinfo=None
+        ).isoformat(sep=" ", timespec="seconds")
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             await db.execute(
@@ -203,7 +205,9 @@ class ProjectRepository:
     ) -> None:
         zone = _validate_timezone(timezone)
         local_now = finished_at.astimezone(zone)
-        next_run = croniter(cron_expression, local_now).get_next(datetime).isoformat()
+        next_run = croniter(cron_expression, local_now).get_next(datetime).astimezone(UTC).replace(
+            tzinfo=None
+        ).isoformat(sep=" ", timespec="seconds")
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute(
                 """
