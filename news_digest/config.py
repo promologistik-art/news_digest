@@ -38,11 +38,21 @@ class Settings(BaseSettings):
 
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_publishing_enabled: bool = False
+    telegram_admin_ids: str = ""
     kontentfabrik_database_url: SecretStr = SecretStr("")
 
     database_url: str = "sqlite:///./data/news_digest.sqlite3"
     collection_user_agent: str = "news_digest/0.1"
     collection_timeout_seconds: float = Field(default=25, gt=0, le=300)
+
+    @property
+    def telegram_admin_id_set(self) -> frozenset[int]:
+        """Parse comma-separated Telegram numeric user IDs."""
+        values = (part.strip() for part in self.telegram_admin_ids.split(","))
+        try:
+            return frozenset(int(value) for value in values if value)
+        except ValueError as exc:
+            raise ValueError("TELEGRAM_ADMIN_IDS must be comma-separated numeric IDs.") from exc
 
     @cached_property
     def database_path(self) -> Path:
