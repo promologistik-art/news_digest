@@ -23,7 +23,9 @@ from news_digest.storage.publication_queue import PublicationQueue
 logger = logging.getLogger(__name__)
 
 
-async def run_once(\n    settings: Settings, *, project_id: int | None = None\n) -> dict[str, int]:
+async def run_once(
+    settings: Settings, *, project_id: int | None = None
+) -> dict[str, int]:
     database = Database(settings.database_path)
     await database.initialize()
     queue = PublicationQueue(settings.database_path)
