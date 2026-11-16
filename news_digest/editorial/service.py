@@ -42,9 +42,16 @@ class EditorialService:
         self,
         ai: RouterAIClient,
         repository: EditorialRepository | None = None,
+        *,
+        input_price_per_million: float = 11.0,
+        output_price_per_million: float = 45.0,
+        cost_currency: str = "RUB",
     ) -> None:
         self.ai = ai
         self.repository = repository
+        self.input_price_per_million = input_price_per_million
+        self.output_price_per_million = output_price_per_million
+        self.cost_currency = cost_currency
 
     async def process_and_save(
         self,
@@ -57,7 +64,7 @@ class EditorialService:
         """Run editorial processing and persist the outcome and token usage."""
         if self.repository is None:
             raise EditorialError("EditorialRepository is required to persist results.")
-        result = await self.process(article, brief)
+        result = await self.process(article, brief, project_id=project_id)
         await self.repository.save_result(
             project_id=project_id,
             article_id=article_id,
@@ -65,45 +72,133 @@ class EditorialService:
         )
         return result
 
+    def _estimate_cost(self, messages: list[dict[str, str]], max_output_tokens: int) -> float:
+        estimated_input_tokens = max(
+            1,
+            sum(len(message["content"]) for message in messages) // 4,
+        )
+        return (
+            estimated_input_tokens * self.input_price_per_million
+            + max_output_tokens * self.output_price_per_million
+        ) / 1_000_000
+
+    async def _reserve_budget(
+        self,
+        *,
+        project_id: int | None,
+        brief: EditorialBrief,
+        operation: str,
+        estimated_cost: float,
+    ) -> int | None | bool:
+        if brief.monthly_ai_budget_rub is None:
+            return None
+        if project_id is None or self.repository is None:
+            raise EditorialError("Project context is required to enforce an AI budget.")
+        reservation = await self.repository.reserve_ai_budget(
+            project_id=project_id,
+            operation=operation,
+            estimated_cost=estimated_cost,
+            monthly_budget=brief.monthly_ai_budget_rub,
+            currency=self.cost_currency,
+        )
+        return reservation if reservation is not None else False
+
+    async def _release_budget(self, reservation: int | None | bool) -> None:
+        if isinstance(reservation, int) and self.repository is not None:
+            await self.repository.release_ai_budget(reservation_id=reservation)
+
+    async def _record_usage(
+        self,
+        *,
+        project_id: int | None,
+        operation: str,
+        result: Any,
+        reservation: int | None | bool,
+        estimated_cost: float,
+    ) -> None:
+        if project_id is None or self.repository is None:
+            return
+        usage = result.usage
+        await self.repository.record_ai_usage(
+            project_id=project_id,
+            provider=result.provider or "routerai",
+            model=result.model,
+            operation=operation,
+            input_tokens=usage.prompt_tokens if usage is not None else None,
+            output_tokens=usage.completion_tokens if usage is not None else None,
+            total_tokens=usage.total_tokens if usage is not None else None,
+            input_price_per_million=self.input_price_per_million,
+            output_price_per_million=self.output_price_per_million,
+            currency=self.cost_currency,
+            request_id=result.request_id,
+            reservation_id=reservation if isinstance(reservation, int) else None,
+            estimated_cost=estimated_cost,
+        )
+
     async def process(
         self,
         article: NormalizedArticle,
         brief: EditorialBrief,
+        *,
+        project_id: int | None = None,
     ) -> EditorialResult:
         rejection = _preflight_rejection(article, brief)
         if rejection is not None:
             return _rejected_result(rejection)
 
-        assessed = await self.ai.chat(
+        assessment_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Ты редактор новостного проекта. Оценивай только предоставленные данные. "
+                    "Не додумывай факты. Если список тем проекта не пуст, поле topic должно "
+                    "дословно совпадать с одной из тем проекта. Если список географий не пуст, "
+                    "поле geography должно дословно совпадать с одной из географий проекта; "
+                    "если география статьи не подтверждается источником, укажи null. "
+                    "factual_points — от 1 до 8 коротких дословных фрагментов исходной статьи, "
+                    "подтверждающих основные факты; не пересказывай их своими словами. "
+                    "Верни JSON со всеми полями: relevant, topic, geography, relevance_score, "
+                    "significance_score, novelty_score, confidence, article_date, event_date, "
+                    "factual_points, uncertainties, rejection_reason. Оценки от 0 до 100, "
+                    "даты ISO 8601 или null."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"project": brief.model_dump(), "article": _article_payload(article)},
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+        assessment_estimate = self._estimate_cost(assessment_messages, 1100)
+        assessment_reservation = await self._reserve_budget(
+            project_id=project_id,
+            brief=brief,
             operation="editorial_assessment",
-            temperature=0.1,
-            max_tokens=1100,
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты редактор новостного проекта. Оценивай только предоставленные данные. "
-                        "Не додумывай факты. Если список тем проекта не пуст, поле topic должно "
-                        "дословно совпадать с одной из тем проекта. Если список географий не пуст, "
-                        "поле geography должно дословно совпадать с одной из географий проекта; "
-                        "если география статьи не подтверждается источником, укажи null. "
-                        "factual_points — от 1 до 8 коротких дословных фрагментов исходной статьи, "
-                        "подтверждающих основные факты; не пересказывай их своими словами. "
-                        "Верни JSON со всеми полями: relevant, topic, geography, relevance_score, "
-                        "significance_score, novelty_score, confidence, article_date, event_date, "
-                        "factual_points, uncertainties, rejection_reason. Оценки от 0 до 100, "
-                        "даты ISO 8601 или null."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {"project": brief.model_dump(), "article": _article_payload(article)},
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
+            estimated_cost=assessment_estimate,
+        )
+        if assessment_reservation is False:
+            return _rejected_result(
+                "The project's monthly AI budget does not cover the next assessment request."
+            )
+        try:
+            assessed = await self.ai.chat(
+                operation="editorial_assessment",
+                temperature=0.1,
+                max_tokens=1100,
+                response_format={"type": "json_object"},
+                messages=assessment_messages,
+            )
+        except Exception:
+            await self._release_budget(assessment_reservation)
+            raise
+        await self._record_usage(
+            project_id=project_id,
+            operation="editorial_assessment",
+            result=assessed,
+            reservation=assessment_reservation,
+            estimated_cost=assessment_estimate,
         )
         assessment = _parse_model(EditorialAssessment, assessed.content)
         selected = (
@@ -133,36 +228,62 @@ class EditorialService:
                 tokens=_total_tokens(assessed.usage),
             )
 
-        drafted = await self.ai.chat(
+        draft_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Подготовь новостную публикацию на языке проекта. Используй только факты "
+                    "из исходной статьи и factual_points оценки. Не добавляй внешние сведения, "
+                    "причины, прогнозы или цитаты. factual_points_used должен содержать только "
+                    "дословные элементы из factual_points оценки, на которых основан текст. "
+                    "Если данных недостаточно, обозначь это в caveat. Верни JSON: headline, "
+                    "caption, source_url, factual_points_used, caveat. Заголовок и подпись "
+                    "должны быть содержательными, без кликбейта."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "project": brief.model_dump(),
+                        "article": _article_payload(article),
+                        "assessment": assessment.model_dump(),
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+        draft_estimate = self._estimate_cost(draft_messages, 700)
+        draft_reservation = await self._reserve_budget(
+            project_id=project_id,
+            brief=brief,
             operation="editorial_draft",
-            temperature=0.2,
-            max_tokens=700,
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Подготовь новостную публикацию на языке проекта. Используй только факты "
-                        "из исходной статьи и factual_points оценки. Не добавляй внешние сведения, "
-                        "причины, прогнозы или цитаты. factual_points_used должен содержать только "
-                        "дословные элементы из factual_points оценки, на которых основан текст. "
-                        "Если данных недостаточно, обозначь это в caveat. Верни JSON: headline, "
-                        "caption, source_url, factual_points_used, caveat. Заголовок и подпись "
-                        "должны быть содержательными, без кликбейта."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "project": brief.model_dump(),
-                            "article": _article_payload(article),
-                            "assessment": assessment.model_dump(),
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
+            estimated_cost=draft_estimate,
+        )
+        if draft_reservation is False:
+            return _rejected_result(
+                "The project's monthly AI budget does not cover the draft request.",
+                assessment=assessment,
+                model=assessed.model,
+                tokens=_total_tokens(assessed.usage),
+            )
+        try:
+            drafted = await self.ai.chat(
+                operation="editorial_draft",
+                temperature=0.2,
+                max_tokens=700,
+                response_format={"type": "json_object"},
+                messages=draft_messages,
+            )
+        except Exception:
+            await self._release_budget(draft_reservation)
+            raise
+        await self._record_usage(
+            project_id=project_id,
+            operation="editorial_draft",
+            result=drafted,
+            reservation=draft_reservation,
+            estimated_cost=draft_estimate,
         )
         draft = _parse_model(EditorialDraft, drafted.content)
         if str(draft.source_url).rstrip("/") != article.canonical_url.rstrip("/"):
