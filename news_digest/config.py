@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ai_max_retries: int = Field(default=3, ge=0, le=10)
     ai_input_price_per_million: float = Field(default=11.0, ge=0)
     ai_output_price_per_million: float = Field(default=45.0, ge=0)
+    ai_cache_read_price_per_million: float = Field(default=0.23, ge=0)
     ai_cost_currency: str = "RUB"
 
     telegram_bot_token: SecretStr = SecretStr("")
