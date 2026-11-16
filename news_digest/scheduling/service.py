@@ -24,7 +24,10 @@ class ProjectScheduler:
         await Database(self.settings.database_path).initialize()
         logger.info("Project scheduler started (poll=%ss)", self.poll_seconds)
         while True:
-            await self.run_due()
+            try:
+                await self.run_due()
+            except Exception:
+                logger.exception("Scheduler polling cycle failed; will retry")
             await asyncio.sleep(self.poll_seconds)
 
     async def run_due(self) -> int:
