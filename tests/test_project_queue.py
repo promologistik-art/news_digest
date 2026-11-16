@@ -110,3 +110,31 @@ async def test_expired_lease_can_be_reclaimed_without_duplicate_delivery(tmp_pat
     assert reclaimed is not None
     assert reclaimed.id == first.id
     assert reclaimed.target_ids == ("@channel_a",)
+
+
+
+@pytest.mark.asyncio
+async def test_permanently_failed_item_can_be_manually_retried(tmp_path) -> None:
+    path = tmp_path / "manual-retry.sqlite3"
+    queue, project_id = await _prepare_ready_item(path, targets=("@channel_a",))
+    item = await queue.claim_next(now="2026-11-16 10:00:00")
+    assert item is not None
+    assert await queue.mark_failed(
+        item,
+        target_id="@channel_a",
+        error="permanent failure after retry budget",
+        retry_at=None,
+        max_attempts=1,
+    ) == "failed"
+
+    assert await queue.retry_failed(queue_id=item.id) is True
+    assert await queue.retry_failed(queue_id=item.id) is False
+    retry = await queue.claim_next(now="2026-11-16 10:01:00")
+    assert retry is not None
+    assert retry.attempts == 1
+    assert retry.target_ids == ("@channel_a",)
+
+    queue_items = await queue.list_project_queue(project_id=project_id)
+    assert queue_items[0]["status"] == "processing"
+    deliveries = await queue.list_deliveries(queue_id=item.id)
+    assert deliveries[0]["status"] == "failed"
