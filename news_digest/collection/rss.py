@@ -20,6 +20,7 @@ import httpx
 from news_digest.collection.normalization import NormalizedArticle, normalize_article
 from news_digest.config import Settings
 from news_digest.storage.database import Database
+from news_digest.storage.repositories import ArticleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +77,66 @@ class RSSCollector:
             if temporary_client:
                 await client.aclose()
 
+    async def collect_shared(
+        self,
+        database: Database,
+        settings: Settings,
+        *,
+        project_id: int | None = None,
+    ) -> int:
+        """Fetch each shared feed once, then attach its articles to subscribed projects."""
+        query = """
+            SELECT s.id, s.url, s.name, ps.project_id
+            FROM sources s
+            JOIN project_sources ps ON ps.source_id = s.id
+            JOIN projects p ON p.id = ps.project_id
+            WHERE ps.source_mode = 'shared' AND ps.enabled = 1
+              AND s.is_active = 1 AND p.status = 'active'
+        """
+        parameters: tuple[object, ...] = ()
+        if project_id is not None:
+            query += " AND p.id = ?"
+            parameters = (project_id,)
+        query += " ORDER BY s.id, ps.project_id"
+        async with aiosqlite.connect(database.path) as db:
+            cursor = await db.execute(query, parameters)
+            rows = await cursor.fetchall()
+
+        subscriptions: dict[int, dict[str, Any]] = {}
+        for source_id, url, name, subscriber_id in rows:
+            source_data = subscriptions.setdefault(
+                int(source_id),
+                {"url": url, "name": name, "project_ids": []},
+            )
+            source_data["project_ids"].append(int(subscriber_id))
+
+        saved = 0
+        for source_id, source_data in subscriptions.items():
+            saved += await self._collect_source(
+                database,
+                settings,
+                source_id=source_id,
+                url=source_data["url"],
+                name=source_data["name"],
+                project_ids=source_data["project_ids"],
+            )
+        return saved
 
     async def collect_project(
-        self, project_id: int, database: Database, settings: Settings
+        self,
+        project_id: int,
+        database: Database,
+        settings: Settings,
     ) -> int:
-        """Collect feeds assigned to a project and attach normalized articles to it."""
+        """Fetch project-only feeds; shared feeds are collected once by collect_shared."""
         async with aiosqlite.connect(database.path) as db:
             cursor = await db.execute(
                 """
                 SELECT s.id, s.url, s.name FROM sources s
                 JOIN project_sources ps ON ps.source_id = s.id
-                WHERE ps.project_id = ? AND ps.enabled = 1 AND s.is_active = 1
+                JOIN projects p ON p.id = ps.project_id
+                WHERE ps.project_id = ? AND ps.source_mode = 'project'
+                  AND ps.enabled = 1 AND s.is_active = 1 AND p.status = 'active'
                 ORDER BY s.id
                 """,
                 (project_id,),
@@ -95,52 +145,47 @@ class RSSCollector:
 
         saved = 0
         for source_id, url, name in sources:
-            source = RSSSource(
+            saved += await self._collect_source(
+                database,
+                settings,
+                source_id=int(source_id),
                 url=url,
                 name=name,
-                timeout_seconds=settings.collection_timeout_seconds,
-                user_agent=settings.collection_user_agent,
+                project_ids=[project_id],
             )
-            try:
-                articles = await self.collect(source)
-            except (httpx.HTTPError, ValueError, OSError) as exc:
-                logger.warning("RSS source failed (%s): %s", name or url, type(exc).__name__)
-                continue
-            async with aiosqlite.connect(database.path) as db:
-                for article in articles:
-                    cursor = await db.execute(
-                        """
-                        INSERT INTO articles (
-                            canonical_url, title, description, content, source_id,
-                            published_at, content_hash, image_url
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(canonical_url) DO UPDATE SET
-                            title=excluded.title, description=excluded.description,
-                            content=CASE WHEN excluded.content != ''
-                                         THEN excluded.content ELSE articles.content END,
-                            image_url=COALESCE(excluded.image_url, articles.image_url)
-                        """,
-                        (
-                            article.canonical_url, article.title, article.description,
-                            article.content, source_id, article.published_at,
-                            article.content_hash, article.image_url,
-                        ),
-                    )
-                    lookup = await db.execute(
-                        "SELECT id FROM articles WHERE canonical_url = ?",
-                        (article.canonical_url,),
-                    )
-                    article_id = (await lookup.fetchone())[0]
-                    await db.execute(
-                        """
-                        INSERT INTO project_articles (project_id, article_id)
-                        VALUES (?, ?) ON CONFLICT(project_id, article_id) DO NOTHING
-                        """,
-                        (project_id, article_id),
-                    )
-                    saved += int(cursor.rowcount == 1)
-                await db.commit()
         return saved
+
+    async def _collect_source(
+        self,
+        database: Database,
+        settings: Settings,
+        *,
+        source_id: int,
+        url: str,
+        name: str | None,
+        project_ids: list[int],
+    ) -> int:
+        source = RSSSource(
+            url=url,
+            name=name,
+            timeout_seconds=settings.collection_timeout_seconds,
+            user_agent=settings.collection_user_agent,
+        )
+        try:
+            articles = await self.collect(source)
+        except (httpx.HTTPError, ValueError, OSError) as exc:
+            logger.warning("RSS source failed (%s): %s", name or url, type(exc).__name__)
+            return 0
+
+        repository = ArticleRepository(database.path)
+        stored = await repository.save_articles(articles, source_id=source_id)
+        for item in stored:
+            for subscriber_id in project_ids:
+                await repository.attach_to_project(
+                    project_id=subscriber_id,
+                    article_id=item.article_id,
+                )
+        return sum(item.inserted for item in stored)
 
     async def _get_with_redirects(
         self,
