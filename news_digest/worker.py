@@ -87,11 +87,11 @@ async def run_once(
                 )
                 try:
                     result = await editorial.process_and_save(
-                        article, brief, project_id=current_current_project_id, article_id=article_id
+                        article, brief, project_id=current_project_id, article_id=article_id
                     )
                     totals["assessed"] += 1
                     if result.draft is not None and await queue.enqueue(
-                        project_id=project_id, article_id=article_id
+                        project_id=current_project_id, article_id=article_id
                     ):
                         totals["queued"] += 1
                 except (RouterAIError, EditorialError, sqlite3.Error, ValueError):
