@@ -25,7 +25,7 @@ class EditorialRepository:
         article_id: int,
         result: EditorialResult,
     ) -> None:
-        """Upsert the assessment/draft and record each model operation's usage."""
+        """Upsert the assessment and generated draft for a project article."""
         payload = {
             "assessment": result.assessment.model_dump(mode="json"),
             "draft": result.draft.model_dump(mode="json") if result.draft else None,
