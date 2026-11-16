@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from telegram import Bot
+from telegram import Bot, TelegramError
 
 from news_digest.storage.publication_queue import PublicationQueue, QueueItem
 
@@ -39,7 +39,7 @@ class TelegramPublisher:
                         caption_length=len(text.encode("utf-16-le")) // 2,
                     )
                     delivered += 1
-                except Exception as exc:
+                except (TelegramError, OSError, ValueError) as exc:
                     failed += 1
                     retry_at = (
                         datetime.now(UTC) + timedelta(minutes=min(2 ** item.attempts, 60))
