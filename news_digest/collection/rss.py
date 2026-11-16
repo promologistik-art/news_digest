@@ -7,10 +7,10 @@ import ipaddress
 import logging
 import socket
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import UTC
 from email.utils import format_datetime
 from time import struct_time
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urljoin, urlsplit
 
 import feedparser
@@ -35,7 +35,7 @@ class RSSCollector:
         self._client = client
         self._owns_client = client is None
 
-    async def __aenter__(self) -> "RSSCollector":
+    async def __aenter__(self) -> Self:
         if self._client is None:
             self._client = httpx.AsyncClient(follow_redirects=False)
         return self
@@ -160,7 +160,7 @@ def _published_at(entry: Any) -> str | None:
         return None
     from datetime import datetime
 
-    return format_datetime(datetime(*parsed[:6], tzinfo=timezone.utc))
+    return format_datetime(datetime(*parsed[:6], tzinfo=UTC))
 
 
 def _image_url(entry: Any) -> str | None:
