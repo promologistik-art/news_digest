@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     ai_model: str = "deepseek/deepseek-v4.1-flash"
     ai_timeout_seconds: float = Field(default=90, gt=0, le=600)
     ai_max_retries: int = Field(default=3, ge=0, le=10)
+    ai_input_price_per_million: float = Field(default=11.0, ge=0)
+    ai_output_price_per_million: float = Field(default=45.0, ge=0)
+    ai_cost_currency: str = "RUB"
 
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_publishing_enabled: bool = False
