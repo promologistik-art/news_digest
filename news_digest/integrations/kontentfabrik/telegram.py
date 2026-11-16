@@ -199,8 +199,8 @@ async def _dispatch(
             f"Расход RouterAI за текущий месяц, проект #{project_text}:\n"
             f"Стоимость: {usage['cost']:.4f} ₽ из {budget_text}\n"
             f"Запросов: {usage['requests']}\n"
-            f"Токены: вход {usage['input_tokens']}, выход {usage['output_tokens']}, "
-            f"всего {usage['total_tokens']}\n"
+            f"Токены: вход {usage['input_tokens']} (кэш {usage['cached_input_tokens']}), "
+            f"выход {usage['output_tokens']}, всего {usage['total_tokens']}\n"
             f"Запросов с оценочной стоимостью: {usage['estimated_requests']}"
         )
 
