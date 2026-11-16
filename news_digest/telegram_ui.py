@@ -166,7 +166,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             text = "📥 <b>Источники</b>\nНажмите на источник, чтобы изменить его состояние." if items else "📥 <b>Источников пока нет.</b>"
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=_kb(rows))
         elif data.startswith("ui:source-toggle:"):
-            _, _, _, pid, sid, state = data.split(":")
+            _, _, pid, sid, state = data.split(":")
             await service.set_source_enabled(head_user_id=user_id, project_id=int(pid), source_id=int(sid), enabled=state == "on")
             items = await service.list_sources(head_user_id=user_id, project_id=int(pid))
             rows = [[(f"{'🟢' if s['enabled'] else '⚪'} {s['name'] or s['url'][:28]}", f"ui:source-toggle:{pid}:{s['id']}:{'off' if s['enabled'] else 'on'}")] for s in items]
@@ -181,7 +181,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             rows += [[("➕ Добавить канал", f"ui:addtarget:{pid}")], [("◀️ Назад", f"ui:p:{pid}")]]
             await query.edit_message_text("📤 <b>Каналы публикации</b>\nНажмите на канал, чтобы включить или выключить его." if items else "📤 <b>Каналы ещё не добавлены.</b>", parse_mode="HTML", reply_markup=_kb(rows))
         elif data.startswith("ui:target-toggle:"):
-            _, _, _, pid, target, state = data.split(":")
+            _, _, pid, target, state = data.split(":")
             await service.set_target_enabled(head_user_id=user_id, project_id=int(pid), target_id=target, enabled=state == "on")
             items = await service.list_targets(head_user_id=user_id, project_id=int(pid))
             rows = [[(f"{'🟢' if t['enabled'] else '⚪'} {t.get('title') or t['target_id']}", f"ui:target-toggle:{pid}:{t['target_id']}:{'off' if t['enabled'] else 'on'}")] for t in items]
@@ -232,14 +232,14 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ]
             await query.edit_message_text("🕒 <b>Расписание публикаций</b>\nВыберите готовый вариант:", parse_mode="HTML", reply_markup=_kb(rows))
         elif data.startswith("ui:set-schedule:"):
-            _, _, _, pid, cron = data.split(":", 4)
+            _, _, pid, cron = data.split(":", 3)
             await service.set_schedule(head_user_id=user_id, project_id=int(pid), cron_expression=cron, timezone="Europe/Moscow", enabled=True)
             await query.edit_message_text("✅ Расписание сохранено (Europe/Moscow).", reply_markup=_kb([[("◀️ К проекту", f"ui:p:{pid}")]]))
         elif data.startswith("ui:settings:"):
             pid = int(data.split(":")[2])
             await query.edit_message_text("🌐 <b>Настройки проекта</b>\n\nВыберите язык:", parse_mode="HTML", reply_markup=_kb([[("Русский", f"ui:lang:{pid}:ru"), ("English", f"ui:lang:{pid}:en")], [("◀️ Назад", f"ui:p:{pid}")]]))
         elif data.startswith("ui:lang:"):
-            _, _, _, pid, lang = data.split(":")
+            _, _, pid, lang = data.split(":")
             context.user_data["news_ui_input"] = {"kind": "timezone", "project_id": int(pid), "language": lang}
             await query.edit_message_text("Отправьте часовой пояс, например Europe/Moscow или Europe/Berlin:")
         elif data.startswith("ui:usage:"):
