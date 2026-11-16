@@ -27,6 +27,7 @@ HELP = """Управление новостными проектами:
 /news addtarget ID | @channel или -100... | Название
 /news target-toggle ID | @channel или -100... | on/off
 /news schedule ID | cron | Europe/Moscow | on/off
+/news usage ID
 
 Проект создаётся в статусе draft. Для обработки переведите его в active.
 Пример правил: {"topics":["кино","книги"],"geographies":["Россия","Мир"],
@@ -184,6 +185,23 @@ async def _dispatch(
             enabled=_as_bool(enabled_text),
         )
         return f"Расписание #{schedule_id} сохранено для проекта #{project_text}."
+
+    if command == "usage":
+        (project_text,) = _fields(raw, 1)
+        report = await service.get_ai_usage(
+            head_user_id=user_id, project_id=int(project_text)
+        )
+        usage = report["usage"]
+        budget = report["monthly_budget_rub"]
+        budget_text = f"{budget:.2f} ₽" if budget is not None else "не задан"
+        return (
+            f"Расход RouterAI за текущий месяц, проект #{project_text}:\\n"
+            f"Стоимость: {usage['cost']:.4f} ₽ из {budget_text}\\n"
+            f"Запросов: {usage['requests']}\\n"
+            f"Токены: вход {usage['input_tokens']}, выход {usage['output_tokens']}, "
+            f"всего {usage['total_tokens']}\\n"
+            f"Запросов с оценочной стоимостью: {usage['estimated_requests']}"
+        )
 
     return HELP
 
