@@ -6,7 +6,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC
 from email.utils import format_datetime
 from time import struct_time
@@ -65,6 +65,12 @@ class RSSCollector:
             articles: list[NormalizedArticle] = []
             for entry in parsed.entries:
                 article = _entry_to_article(entry)
+                if article is not None and article.image_url:
+                    try:
+                        await _validate_public_url(article.image_url)
+                    except ValueError:
+                        logger.warning("Skipping unsafe RSS image URL: %s", article.image_url)
+                        article = replace(article, image_url=None)
                 if article is not None:
                     articles.append(article)
             logger.info(
@@ -264,6 +270,17 @@ def _entry_to_article(entry: Any) -> NormalizedArticle | None:
             image_url=image_url,
         )
     except ValueError:
+        if image_url:
+            try:
+                return normalize_article(
+                    url=link,
+                    title=title,
+                    description=description,
+                    content=content,
+                    published_at=published_at,
+                )
+            except ValueError:
+                pass
         logger.warning("Skipping malformed RSS entry URL: %s", link)
         return None
 
@@ -281,6 +298,12 @@ def _image_url(entry: Any) -> str | None:
     for key in ("media_content", "media_thumbnail"):
         values = entry.get(key) or []
         for value in values:
+            media_type = str(value.get("type") or "")
+            medium = str(value.get("medium") or "")
+            if media_type and not media_type.startswith("image/"):
+                continue
+            if medium and medium != "image":
+                continue
             candidate = value.get("url")
             if candidate:
                 return str(candidate)
