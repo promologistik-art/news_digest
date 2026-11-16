@@ -109,6 +109,10 @@ class StandaloneProjectService:
             timezone=timezone, enabled=enabled,
         )
 
+    async def get_rules(self, *, head_user_id: int, project_id: int) -> dict[str, Any]:
+        await self._owned(head_user_id, project_id)
+        return await self.projects.get_rules(project_id=project_id)
+
     async def get_ai_usage(self, *, head_user_id: int, project_id: int):
         await self._owned(head_user_id, project_id)
         rules = await self.projects.get_rules(project_id=project_id)
