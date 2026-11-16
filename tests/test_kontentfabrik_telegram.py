@@ -80,3 +80,24 @@ async def test_status_and_boolean_commands_are_validated(tmp_path) -> None:
         await _dispatch(service, 12345, "status", "1 | running")
     with pytest.raises(ValueError, match="on или off"):
         await _dispatch(service, 12345, "target-toggle", "1 | @test | maybe")
+
+
+
+@pytest.mark.asyncio
+async def test_kontentfabrik_command_can_subscribe_to_shared_source(tmp_path) -> None:
+    path = tmp_path / "shared-source-command.sqlite3"
+    await Database(path).initialize()
+    service = KontentFabrikProjectService(FakeAdapter(), ProjectRepository(path))
+    created = await _dispatch(service, 12345, "create", "shared | Shared")
+    project_id = int(created.split("ID ")[1].split(")")[0])
+
+    result = await _dispatch(
+        service,
+        12345,
+        "addsource",
+        f"{project_id} | https://example.org/feed.xml | Example | shared",
+    )
+
+    assert "общий" in result
+    sources = await service.list_sources(head_user_id=12345, project_id=project_id)
+    assert sources[0]["mode"] == "shared"
