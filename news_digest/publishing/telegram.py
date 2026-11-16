@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from telegram import Bot, TelegramError
+from telegram import Bot
+from telegram.error import TelegramError
 
 from news_digest.storage.publication_queue import PublicationQueue, QueueItem
 
