@@ -45,12 +45,14 @@ class EditorialService:
         *,
         input_price_per_million: float = 11.0,
         output_price_per_million: float = 45.0,
+        cache_read_price_per_million: float = 0.23,
         cost_currency: str = "RUB",
     ) -> None:
         self.ai = ai
         self.repository = repository
         self.input_price_per_million = input_price_per_million
         self.output_price_per_million = output_price_per_million
+        self.cache_read_price_per_million = cache_read_price_per_million
         self.cost_currency = cost_currency
 
     async def process_and_save(
@@ -125,10 +127,14 @@ class EditorialService:
             model=result.model,
             operation=operation,
             input_tokens=usage.prompt_tokens if usage is not None else None,
+            cached_input_tokens=(
+                usage.cached_prompt_tokens if usage is not None else None
+            ),
             output_tokens=usage.completion_tokens if usage is not None else None,
             total_tokens=usage.total_tokens if usage is not None else None,
             input_price_per_million=self.input_price_per_million,
             output_price_per_million=self.output_price_per_million,
+            cache_read_price_per_million=self.cache_read_price_per_million,
             currency=self.cost_currency,
             request_id=result.request_id,
             reservation_id=reservation if type(reservation) is int else None,
