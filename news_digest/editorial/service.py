@@ -104,7 +104,7 @@ class EditorialService:
         return reservation if reservation is not None else False
 
     async def _release_budget(self, reservation: int | None | bool) -> None:
-        if isinstance(reservation, int) and self.repository is not None:
+        if type(reservation) is int and self.repository is not None:
             await self.repository.release_ai_budget(reservation_id=reservation)
 
     async def _record_usage(
@@ -131,7 +131,7 @@ class EditorialService:
             output_price_per_million=self.output_price_per_million,
             currency=self.cost_currency,
             request_id=result.request_id,
-            reservation_id=reservation if isinstance(reservation, int) else None,
+            reservation_id=reservation if type(reservation) is int else None,
             estimated_cost=estimated_cost,
         )
 
