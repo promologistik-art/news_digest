@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class EditorialRepository:
     """Stores the editorial outcome against a project's normalized article."""
 
-    def __init__(self, database_path: str) -> None:
+    def __init__(self, database_path: str | Path) -> None:
         self.database_path = database_path
 
     async def save_result(
