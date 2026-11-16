@@ -9,6 +9,7 @@ import logging
 from news_digest.ai.routerai import RouterAIClient, RouterAIError
 from news_digest.config import Settings
 from news_digest.storage.database import Database
+from news_digest.worker import run_once
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -73,10 +74,13 @@ async def _run(args: argparse.Namespace) -> int:
         return 0
 
     if args.once:
+        totals = await run_once(settings)
+        print(
+            "Worker run complete: "
+            + ", ".join(f"{key}={value}" for key, value in totals.items())
+        )
         if not settings.telegram_publishing_enabled:
-            print("Publishing is disabled. Configure and explicitly enable it before publishing.")
-        else:
-            print("Worker pipeline is not wired yet; no publication was attempted.")
+            print("Publishing is disabled; approved drafts remain safely queued.")
         return 0
 
     print("Use --check-config, --init-db, --test-ai or --once.")
