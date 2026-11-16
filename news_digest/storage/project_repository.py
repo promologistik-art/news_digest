@@ -293,6 +293,7 @@ def _validate_rules(rules: dict[str, Any]) -> dict[str, Any]:
         "style_guide",
         "min_significance",
         "max_age_hours",
+        "monthly_ai_budget_rub",
     }
     unknown = set(rules) - allowed
     if unknown:
@@ -315,6 +316,13 @@ def _validate_rules(rules: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"{key} must be an integer.")
             if not minimum <= value <= maximum:
                 raise ValueError(f"{key} must be between {minimum} and {maximum}.")
+    if "monthly_ai_budget_rub" in normalized:
+        budget = normalized["monthly_ai_budget_rub"]
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+            raise ValueError("monthly_ai_budget_rub must be a non-negative number.")
+        if budget < 0:
+            raise ValueError("monthly_ai_budget_rub must be a non-negative number.")
+        normalized["monthly_ai_budget_rub"] = float(budget)
     for key, maximum in (("audience", 1000), ("style_guide", 4000)):
         if key in normalized:
             value = normalized[key]
