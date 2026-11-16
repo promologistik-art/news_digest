@@ -107,8 +107,9 @@ async def _dispatch(
         )
 
     if command == "addsource":
-        project_text, url, *name_parts = _fields(raw, 2)
-        name = name_parts[0] if name_parts else None
+        source_fields = _optional_fields(raw, 2, 3)
+        project_text, url = source_fields[:2]
+        name = source_fields[2] if len(source_fields) == 3 else None
         source_id = await service.add_source(
             head_user_id=user_id, project_id=int(project_text), url=url, name=name
         )
@@ -146,8 +147,9 @@ async def _dispatch(
         )
 
     if command == "addtarget":
-        project_text, target_id, *title_parts = _fields(raw, 2)
-        title = title_parts[0] if title_parts else None
+        target_fields = _optional_fields(raw, 2, 3)
+        project_text, target_id = target_fields[:2]
+        title = target_fields[2] if len(target_fields) == 3 else None
         target_pk = await service.add_target(
             head_user_id=user_id, project_id=int(project_text),
             target_id=target_id, title=title, enabled=False,
@@ -182,6 +184,13 @@ def _fields(raw: str, count: int, *, split_once: bool = False) -> list[str]:
     parts = raw.split("|", maxsplit=1 if split_once else count - 1)
     values = [part.strip() for part in parts]
     if len(values) != count or any(not value for value in values):
+        raise ValueError("Проверьте формат команды. Пример: /news help")
+    return values
+
+
+def _optional_fields(raw: str, minimum: int, maximum: int) -> list[str]:
+    values = [part.strip() for part in raw.split("|", maxsplit=maximum - 1)]
+    if not minimum <= len(values) <= maximum or any(not value for value in values):
         raise ValueError("Проверьте формат команды. Пример: /news help")
     return values
 
