@@ -19,6 +19,15 @@ class StoredArticle:
     duplicate_of: int | None = None
 
 
+async def _fetchone(
+    db: aiosqlite.Connection,
+    query: str,
+    parameters: tuple[object, ...],
+) -> aiosqlite.Row | tuple[object, ...] | None:
+    cursor = await db.execute(query, parameters)
+    return await cursor.fetchone()
+
+
 class ArticleRepository:
     """Stores each source article once and links it independently to projects."""
 
@@ -45,8 +54,8 @@ class ArticleRepository:
                 (url, name, source_type, reliability_score),
             )
             await db.commit()
-            row = await db.execute_fetchone(
-                "SELECT id FROM sources WHERE url = ?", (url,)
+            row = await _fetchone(
+                db, "SELECT id FROM sources WHERE url = ?", (url,)
             )
             if row is None:
                 raise RuntimeError("Source insert completed but source ID was not found.")
@@ -61,9 +70,9 @@ class ArticleRepository:
         stored: list[StoredArticle] = []
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute("PRAGMA foreign_keys = ON")
-            async with db.execute("BEGIN"):
-                for article in articles:
-                    duplicate = await db.execute_fetchone(
+            await db.execute("BEGIN")
+            for article in articles:
+                    duplicate = await _fetchone(db,
                         """
                         SELECT id, canonical_url
                         FROM articles
@@ -110,7 +119,8 @@ class ArticleRepository:
                             article.image_url,
                         ),
                     )
-                    row = await db.execute_fetchone(
+                    row = await _fetchone(
+                        db,
                         "SELECT id FROM articles WHERE canonical_url = ?",
                         (article.canonical_url,),
                     )
