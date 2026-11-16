@@ -50,7 +50,13 @@ async def run_once(
             project_id=project_id,
         )
         async with RouterAIClient(settings) as ai:
-            editorial = EditorialService(ai, EditorialRepository(settings.database_path))
+            editorial = EditorialService(
+                ai,
+                EditorialRepository(settings.database_path),
+                input_price_per_million=settings.ai_input_price_per_million,
+                output_price_per_million=settings.ai_output_price_per_million,
+                cost_currency=settings.ai_cost_currency,
+            )
             for current_project_id, project_name, language in projects:
                 totals["collected"] += await collector.collect_project(
                     current_project_id,
@@ -87,6 +93,7 @@ async def run_once(
                     excluded_topics=rules.get("excluded_topics", []),
                     min_significance=rules.get("min_significance", 55),
                     max_age_hours=rules.get("max_age_hours", 72),
+                    monthly_ai_budget_rub=rules.get("monthly_ai_budget_rub"),
                 )
                 for row in articles:
                     (
