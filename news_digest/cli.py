@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--scheduler", action="store_true")
+    parser.add_argument("--bot", action="store_true", help="Run the standalone Telegram bot and scheduler.")
     return parser
 
 
@@ -39,7 +40,9 @@ async def _run(args: argparse.Namespace) -> int:
         print(
             f"Configuration OK; provider={settings.ai_provider}; "
             f"model={settings.ai_model}; timezone={settings.timezone}; "
-            f"RouterAI key={'configured' if key_configured else 'missing'}"
+            f"RouterAI key={'configured' if key_configured else 'missing'}; "
+            f"Telegram token={'configured' if settings.telegram_bot_token.get_secret_value() else 'missing'}; "
+            f"Telegram admins={len(settings.telegram_admin_ids_set)}"
         )
         return 0
 
@@ -89,12 +92,22 @@ async def _run(args: argparse.Namespace) -> int:
             print("Publishing is disabled; approved drafts remain safely queued.")
         return 0
 
-    print("Use --check-config, --init-db, --test-ai, --once or --scheduler.")
+    print("Use --bot, --check-config, --init-db, --test-ai, --once or --scheduler.")
     return 0
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.bot:
+        settings = Settings()
+        logging.basicConfig(
+            level=settings.log_level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+        from news_digest.telegram_bot import run_bot
+
+        run_bot(settings)
+        return
     raise SystemExit(asyncio.run(_run(args)))
 
 
