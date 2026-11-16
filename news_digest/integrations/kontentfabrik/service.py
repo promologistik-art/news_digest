@@ -8,6 +8,7 @@ from news_digest.integrations.kontentfabrik.adapter import (
     KontentFabrikAdapter,
     KontentFabrikBinding,
 )
+from news_digest.storage.editorial_repository import EditorialRepository
 from news_digest.storage.project_repository import ProjectRepository
 
 
@@ -22,6 +23,7 @@ class KontentFabrikProjectService:
     ) -> None:
         self.adapter = adapter
         self.projects = projects
+        self.editorial = EditorialRepository(projects.database_path)
 
     async def _owned_binding(
         self, *, head_user_id: int, project_id: int
@@ -123,3 +125,15 @@ class KontentFabrikProjectService:
             project_id=project_id, cron_expression=cron_expression,
             timezone=timezone, enabled=enabled,
         )
+
+
+    async def get_ai_usage(
+        self, *, head_user_id: int, project_id: int
+    ) -> dict[str, Any]:
+        await self._owned_binding(head_user_id=head_user_id, project_id=project_id)
+        rules = await self.projects.get_rules(project_id=project_id)
+        usage = await self.editorial.get_monthly_usage(project_id=project_id)
+        return {
+            "usage": usage,
+            "monthly_budget_rub": rules.get("monthly_ai_budget_rub"),
+        }
