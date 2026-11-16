@@ -8,6 +8,8 @@ from pathlib import Path
 
 import aiosqlite
 
+SCHEMA_VERSION = 1
+
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -243,4 +245,5 @@ class Database:
                 )
                 """
             )
+            await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             await connection.commit()
