@@ -31,7 +31,8 @@ HELP = """Управление новостными проектами:
 
 Проект создаётся в статусе draft. Для обработки переведите его в active.
 Пример правил: {"topics":["кино","книги"],"geographies":["Россия","Мир"],
-"excluded_topics":["реклама"],"min_significance":60,"max_age_hours":48}.
+"excluded_topics":["реклама"],"min_significance":60,"max_age_hours":48,
+"monthly_ai_budget_rub":50}.
 Расписание задаётся в часовом поясе проекта; публикация дополнительно зависит
 от настроек доставки worker.
 """
@@ -195,11 +196,11 @@ async def _dispatch(
         budget = report["monthly_budget_rub"]
         budget_text = f"{budget:.2f} ₽" if budget is not None else "не задан"
         return (
-            f"Расход RouterAI за текущий месяц, проект #{project_text}:\\n"
-            f"Стоимость: {usage['cost']:.4f} ₽ из {budget_text}\\n"
-            f"Запросов: {usage['requests']}\\n"
+            f"Расход RouterAI за текущий месяц, проект #{project_text}:\n"
+            f"Стоимость: {usage['cost']:.4f} ₽ из {budget_text}\n"
+            f"Запросов: {usage['requests']}\n"
             f"Токены: вход {usage['input_tokens']}, выход {usage['output_tokens']}, "
-            f"всего {usage['total_tokens']}\\n"
+            f"всего {usage['total_tokens']}\n"
             f"Запросов с оценочной стоимостью: {usage['estimated_requests']}"
         )
 
