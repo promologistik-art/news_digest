@@ -24,7 +24,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--scheduler", action="store_true")
-    parser.add_argument("--bot", action="store_true", help="Run the standalone Telegram bot and scheduler.")
+    parser.add_argument(
+        "--bot", action="store_true",
+        help="Run the standalone Telegram bot and scheduler.",
+    )
     return parser
 
 
