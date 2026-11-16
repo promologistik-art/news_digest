@@ -149,6 +149,60 @@ class ProjectRepository:
                 raise ValueError("Source is not assigned to this project.")
             await db.commit()
 
+
+    async def add_target(
+        self, *, project_id: int, target_id: str, title: str | None = None,
+        platform: str = "telegram", enabled: bool = False,
+    ) -> int:
+        async with aiosqlite.connect(self.database_path) as db:
+            await db.execute(
+                """
+                INSERT INTO targets (project_id, platform, target_id, title, enabled)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, platform, target_id) DO UPDATE SET
+                    title=excluded.title, enabled=excluded.enabled
+                """, (project_id, platform, target_id, title, int(enabled)),
+            )
+            cursor = await db.execute(
+                """
+                SELECT id FROM targets
+                WHERE project_id=? AND platform=? AND target_id=?
+                """, (project_id, platform, target_id),
+            )
+            row = await cursor.fetchone()
+            await db.commit()
+            return int(row[0])
+
+    async def list_targets(self, *, project_id: int) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT id, platform, target_id, title, enabled
+                FROM targets WHERE project_id=? ORDER BY id
+                """, (project_id,),
+            )
+            rows = await cursor.fetchall()
+        return [
+            {"id": row[0], "platform": row[1], "target_id": row[2],
+             "title": row[3], "enabled": bool(row[4])}
+            for row in rows
+        ]
+
+    async def set_target_enabled(
+        self, *, project_id: int, target_id: str, enabled: bool,
+        platform: str = "telegram",
+    ) -> None:
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE targets SET enabled=?
+                WHERE project_id=? AND platform=? AND target_id=?
+                """, (int(enabled), project_id, platform, target_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Target is not configured for this project.")
+            await db.commit()
+
     async def set_schedule(
         self, *, project_id: int, cron_expression: str,
         timezone: str = "Europe/Moscow", enabled: bool = False,
