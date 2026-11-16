@@ -65,11 +65,12 @@ class KontentFabrikProjectService:
     async def add_source(
         self, *, head_user_id: int, project_id: int, url: str,
         name: str | None = None, reliability_score: float = 0.5,
+        source_mode: str = "project",
     ) -> int:
         await self._owned_binding(head_user_id=head_user_id, project_id=project_id)
         return await self.projects.add_source(
             project_id=project_id, url=url, name=name,
-            reliability_score=reliability_score, source_mode="project",
+            reliability_score=reliability_score, source_mode=source_mode,
         )
 
     async def set_source_enabled(
