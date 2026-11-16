@@ -182,8 +182,19 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     total_tokens INTEGER,
     cost_amount REAL,
     cost_currency TEXT,
+    cost_estimated INTEGER NOT NULL DEFAULT 0,
     request_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ai_budget_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    operation TEXT NOT NULL,
+    reserved_amount REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'reserved',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT
 );
 """
 
@@ -207,6 +218,24 @@ class Database:
                         f"ALTER TABLE schedules ADD COLUMN {column_name} TEXT"
                     )
             columns = await connection.execute_fetchall("PRAGMA table_info(ai_usage)")
-            if "total_tokens" not in {column[1] for column in columns}:
+            existing_usage_columns = {column[1] for column in columns}
+            if "total_tokens" not in existing_usage_columns:
                 await connection.execute("ALTER TABLE ai_usage ADD COLUMN total_tokens INTEGER")
+            if "cost_estimated" not in existing_usage_columns:
+                await connection.execute(
+                    "ALTER TABLE ai_usage ADD COLUMN cost_estimated INTEGER NOT NULL DEFAULT 0"
+                )
+            await connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ai_budget_reservations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    operation TEXT NOT NULL,
+                    reserved_amount REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'reserved',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TEXT
+                )
+                """
+            )
             await connection.commit()
