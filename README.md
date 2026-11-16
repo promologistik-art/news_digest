@@ -22,14 +22,17 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Fill in secrets locally. Never commit `.env`.
+Set `ROUTERAI_API_KEY` in the local `.env`. Never commit `.env` or paste the key into chat.
 
 ## Initial commands
 
 ```bash
 news-digest --check-config
 news-digest --init-db
+news-digest --test-ai
 news-digest --once
 ```
 
-The initial implementation is deliberately safe by default: publishing is disabled until explicitly configured.
+`--test-ai` sends one short request to RouterAI and reports the returned model, provider (if supplied) and token usage. It does not publish anything.
+
+The worker is safe by default: Telegram publishing remains disabled until explicitly configured.
