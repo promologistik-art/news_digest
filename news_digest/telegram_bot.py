@@ -15,6 +15,7 @@ from news_digest.storage.editorial_repository import EditorialRepository
 from news_digest.storage.project_repository import ProjectRepository
 from news_digest.telegram_service import StandaloneProjectService
 from news_digest.telegram_commands import HELP, dispatch
+from news_digest.telegram_ui import register_ui
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,14 @@ async def _post_init(application: Application) -> None:
     settings: Settings = application.bot_data["settings"]
     await Database(settings.database_path).initialize()
     await application.bot.set_my_commands(
-        [BotCommand("news", "Управление новостными проектами")]
+        [
+            BotCommand("start", "Главное меню"),
+            BotCommand("projects", "Мои проекты"),
+            BotCommand("dashboard", "Главное меню"),
+            BotCommand("help", "Помощь"),
+            BotCommand("cancel", "Отменить текущий ввод"),
+            BotCommand("news", "Старая командная справка"),
+        ]
     )
     application.bot_data["scheduler_task"] = asyncio.create_task(
         ProjectScheduler(settings).run_forever(),
@@ -94,6 +102,7 @@ def run_bot(settings: Settings) -> None:
     )
     application.bot_data["settings"] = settings
     application.bot_data["service"] = service
+    register_ui(application)
     application.add_handler(CommandHandler("news", _news_command))
     logger.info("Starting standalone news-digest Telegram polling")
     application.run_polling(
