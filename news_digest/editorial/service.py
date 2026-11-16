@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,6 +67,18 @@ class EditorialService:
         article: NormalizedArticle,
         brief: EditorialBrief,
     ) -> EditorialResult:
+        rejection = _preflight_rejection(article, brief)
+        if rejection is not None:
+            return EditorialResult(
+                assessment=EditorialAssessment(
+                    relevant=False, topic="", relevance_score=0,
+                    significance_score=0, novelty_score=0, confidence=100,
+                    rejection_reason=rejection,
+                ),
+                draft=None, assessment_model="deterministic_rules",
+                draft_model=None, assessment_tokens=None, draft_tokens=None,
+            )
+
         assessed = await self.ai.chat(
             operation="editorial_assessment",
             temperature=0.1,
@@ -176,3 +189,29 @@ def _parse_model(model: type[Any], content: str) -> Any:
 
 def _total_tokens(usage: Any) -> int | None:
     return usage.total_tokens if usage is not None else None
+
+
+def _preflight_rejection(article: NormalizedArticle, brief: EditorialBrief, *, now: datetime | None = None) -> str | None:
+    """Reject clearly stale or explicitly excluded material before spending AI tokens."""
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    if article.published_at:
+        try:
+            published = datetime.fromisoformat(article.published_at.strip().replace("Z", "+00:00"))
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=UTC)
+            age = current - published.astimezone(UTC)
+        except (TypeError, ValueError):
+            logger.warning("Article has an unparseable publication date; freshness check skipped: %s", article.canonical_url)
+        else:
+            if age > timedelta(hours=brief.max_age_hours):
+                return f"Article is older than the project limit ({brief.max_age_hours} hours)."
+            if age < timedelta(hours=-6):
+                return "Article publication date is more than 6 hours in the future."
+    searchable_text = " ".join((article.title, article.description, article.content)).casefold()
+    for excluded in brief.excluded_topics:
+        term = " ".join(excluded.split()).casefold()
+        if term and term in searchable_text:
+            return f"Article matches an excluded topic: {excluded}."
+    return None
