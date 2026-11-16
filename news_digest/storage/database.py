@@ -1,5 +1,7 @@
 """SQLite database bootstrap and initial multi-project schema."""
 
+# ruff: noqa: I001  # Keep the conventional stdlib/third-party import split explicit.
+
 from __future__ import annotations
 
 from pathlib import Path
