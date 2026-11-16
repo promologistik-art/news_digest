@@ -110,24 +110,27 @@ async def test_ai_budget_reservation_and_actual_cost_accounting(tmp_path) -> Non
         model="deepseek/flash",
         operation="editorial_assessment",
         input_tokens=1000,
+        cached_input_tokens=200,
         output_tokens=500,
         total_tokens=1500,
         input_price_per_million=11,
         output_price_per_million=45,
+        cache_read_price_per_million=0.23,
         currency="RUB",
         request_id="req-1",
         reservation_id=reservation,
         estimated_cost=0.04,
     )
-    assert cost == pytest.approx(0.0335)
+    assert cost == pytest.approx(0.031346)
 
     usage = await repository.get_monthly_usage(project_id=1)
     assert usage == {
         "requests": 1,
         "input_tokens": 1000,
+        "cached_input_tokens": 200,
         "output_tokens": 500,
         "total_tokens": 1500,
-        "cost": pytest.approx(0.0335),
+        "cost": pytest.approx(0.031346),
         "estimated_requests": 0,
     }
     assert await repository.reserve_ai_budget(
@@ -156,10 +159,12 @@ async def test_usage_without_provider_token_counts_is_marked_estimated(tmp_path)
         model="deepseek/flash",
         operation="editorial_assessment",
         input_tokens=None,
+        cached_input_tokens=None,
         output_tokens=None,
         total_tokens=None,
         input_price_per_million=11,
         output_price_per_million=45,
+        cache_read_price_per_million=0.23,
         currency="RUB",
         request_id=None,
         estimated_cost=0.01,
