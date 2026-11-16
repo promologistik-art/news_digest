@@ -1,83 +1,60 @@
 # news_digest
 
-Multi-project news collection, editorial processing and Telegram publishing worker.
+Самостоятельный Telegram-бот для сбора, редакционной обработки и публикации новостей по независимым проектам.
 
-## Architecture
+## Runtime
 
-- Independent worker deployed on server `swe`, separate from ZenDigest.
-- RouterAI is the initial AI gateway; default model: `deepseek/deepseek-v4.1-flash`.
-- API credentials are supplied only through environment variables.
-- Shared article collection and deduplication, followed by project-specific relevance and editorial processing.
-- Independent project settings, sources, schedules, destinations, queues and publication history.
-- SQLite for the first deployable iteration, with a repository layer designed to allow PostgreSQL later.
+Один процесс запускает polling собственного Telegram-бота, команду управления /news и планировщик проектных расписаний. Данные хранятся в собственной SQLite-базе. KontentFabrik не требуется для запуска; его адаптер остаётся отдельной опциональной интеграцией на будущее.
 
-## Development
+## Установка
 
 Python 3.11+.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `ROUTERAI_API_KEY` in the local `.env`. Never commit `.env` or paste the key into chat.
+Заполнить .env:
+- TELEGRAM_BOT_TOKEN — токен отдельного бота.
+- ADMIN_TELEGRAM_IDS — числовые Telegram ID администраторов через запятую.
+- ROUTERAI_API_KEY — ключ RouterAI.
+- DATABASE_URL — SQLite URL.
 
-## Initial commands
+Если ADMIN_TELEGRAM_IDS пуст, команды управления отвечают отказом. Автоматического назначения первого пользователя администратором нет.
+
+## Запуск
+
+Единственная точка запуска контейнера PixiePandora — корневой файл `bot.py`:
 
 ```bash
-news-digest --check-config
-news-digest --init-db
-news-digest --test-ai
-news-digest --once
-news-digest --scheduler
+python bot.py
 ```
 
-`--test-ai` sends one short request to RouterAI and reports the returned model, provider (if supplied) and token usage. It does not publish anything.
+Он запускает Telegram polling и планировщик в одном постоянно работающем процессе. Не запускайте одновременно второй экземпляр этого же бота с тем же токеном.
 
-The worker is safe by default: Telegram publishing remains disabled until explicitly configured.
+Для диагностики и обслуживания доступны CLI-команды через модуль:
 
-## Project scheduling and management
-
-Projects start in `draft` and are processed only after their status is set to `active`. Use `ProjectRepository` to manage per-project RSS sources, editorial rules, Telegram targets and cron schedules. RSS sources can be `shared` (fetched once for all subscribed active projects) or `project` (fetched for one project). Cron schedules are evaluated in each project's IANA timezone by `news-digest --scheduler`; `--once` remains a manual run of all active projects.
-
-Editorial rules accept `monthly_ai_budget_rub` to cap estimated RouterAI spend for an individual project. The worker reserves estimated request cost before sending each assessment/draft request and settles the reservation using returned token usage. Configure `AI_INPUT_PRICE_PER_MILLION`, `AI_OUTPUT_PRICE_PER_MILLION`, `AI_CACHE_READ_PRICE_PER_MILLION` and `AI_COST_CURRENCY` to match the active RouterAI model's rates. Cached prompt tokens are billed at the separate cache-read rate when RouterAI reports them. If RouterAI does not return token counts, the worker records the conservative request estimate and marks it as estimated. In the KontentFabrik head bot, `/news usage PROJECT_ID` reports the current month's project usage.
-
-## KontentFabrik integration
-
-The optional `KontentFabrikAdapter` reads the existing `kf_users`, `user_bindings` and `workers` registry tables using a read-only PostgreSQL connection. It resolves the head-bot Telegram identity to the `news_digest` worker user ID; project data and schedules remain in this worker's own SQLite database. Configure `KONTENTFABRIK_DATABASE_URL` with a read-only database role. A `news_digest` worker and user binding must first be registered in KontentFabrik. This repository does not modify KontentFabrik or its database schema.
-
-
-### Mounting management commands in KontentFabrik
-
-The handlers are implemented in this repository, but they are not active in the running KontentFabrik bot until its application registers them. The host-side change is intentionally not included here.
-
-Install this project in the head-bot environment and register the handlers during application startup:
-
-```python
-from news_digest.config import Settings
-from news_digest.integrations.kontentfabrik import (
-    KontentFabrikAdapter,
-    KontentFabrikProjectService,
-    build_handlers,
-)
-from news_digest.storage.project_repository import ProjectRepository
-
-settings = Settings()
-adapter = KontentFabrikAdapter(
-    settings.kontentfabrik_database_url.get_secret_value()
-)
-service = KontentFabrikProjectService(
-    adapter,
-    ProjectRepository(settings.database_path),
-)
-application.add_handlers(build_handlers(service))
+```bash
+python -m news_digest.cli --check-config
+python -m news_digest.cli --init-db
+python -m news_digest.cli --test-ai
+python -m news_digest.cli --once
+python -m news_digest.cli --scheduler
 ```
 
-The head bot needs a read-only PostgreSQL role for the KontentFabrik registry and write access to the worker's own SQLite data directory. Do not give the adapter write access to the KontentFabrik database. The binding must already exist for the `news_digest` worker. Available commands are shown by `/news help`; project access is checked against the resolved worker-user binding on every operation.
+## Команды Telegram
 
+В Telegram доступна команда /news help. Основные подкоманды: projects, create, status, settings, sources, addsource, source-toggle, rules, targets, addtarget, target-toggle, schedule и usage. Доступ ограничен ADMIN_TELEGRAM_IDS; сервис дополнительно проверяет владельца каждого проекта в собственной SQLite-базе. Проекты создаются в draft; для обработки их нужно перевести в active.
 
-## Server deployment
+## Publishing safety
 
-A dedicated systemd unit template and a deployment checklist for `swe` are in [`deploy/`](deploy/README.md). The unit runs only `news_digest` under its own unprivileged account and uses an isolated application directory, virtual environment, environment file and SQLite data directory. These files are templates; no server commands have been executed.
+TELEGRAM_PUBLISHING_ENABLED=false по умолчанию. До включения отправки нужно проверить права бота в тестовом канале и убедиться, что target назначен правильному проекту. Очередь хранит доставку отдельно по каждому каналу, чтобы повторный запуск не отправлял успешно доставленные публикации повторно.
+
+Планировщик продолжает работу после ошибки отдельного polling-цикла и пишет traceback в лог.
+
+## Будущая интеграция KontentFabrik
+
+KONTENTFABRIK_DATABASE_URL и адаптер в news_digest/integrations/kontentfabrik/ предназначены только для будущей интеграции. Самостоятельный Telegram runtime не подключается к реестру KontentFabrik и не требует его базы. Этот репозиторий не изменяет KontentFabrik.

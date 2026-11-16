@@ -37,12 +37,27 @@ class Settings(BaseSettings):
     ai_cost_currency: str = "RUB"
 
     telegram_bot_token: SecretStr = SecretStr("")
+    admin_telegram_ids: str = ""
     telegram_publishing_enabled: bool = False
     kontentfabrik_database_url: SecretStr = SecretStr("")
 
     database_url: str = "sqlite:///./data/news_digest.sqlite3"
     collection_user_agent: str = "news_digest/0.1"
     collection_timeout_seconds: float = Field(default=25, gt=0, le=300)
+
+    @property
+    def admin_telegram_ids_set(self) -> frozenset[int]:
+        values: set[int] = set()
+        for raw in self.admin_telegram_ids.split(","):
+            value = raw.strip()
+            if value:
+                try:
+                    values.add(int(value))
+                except ValueError as exc:
+                    raise ValueError(
+                        "ADMIN_TELEGRAM_IDS must be comma-separated Telegram numeric IDs."
+                    ) from exc
+        return frozenset(values)
 
     @cached_property
     def database_path(self) -> Path:

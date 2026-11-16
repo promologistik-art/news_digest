@@ -1,51 +1,51 @@
 # Deployment on swe
 
-This is a deployment recipe only. It has not been executed on the server.
+Deployment template only; no server commands have been executed from this repository.
 
-## Target layout
+## Runtime layout
 
-- Application: `/opt/news_digest/app`
-- Virtual environment: `/opt/news_digest/venv`
-- Environment file: `/opt/news_digest/.env`
-- SQLite database and writable data: `/opt/news_digest/data`
-- systemd unit: `/etc/systemd/system/news-digest.service`
+- Application: /opt/news_digest/app
+- Virtual environment: /opt/news_digest/venv
+- Environment file: /opt/news_digest/.env
+- SQLite database: /opt/news_digest/data/news_digest.sqlite3
+- systemd unit: /etc/systemd/system/news-digest.service
 
-Run the worker as a dedicated unprivileged `newsdigest` user. Do not reuse the ZenDigest working directory, virtual environment, database, environment file or service.
+Run under a dedicated unprivileged newsdigest user. Do not reuse ZenDigest directories, databases, environment files or service units.
 
 ## First installation
 
-1. Create the `newsdigest` system user and group.
-2. Clone `https://github.com/promologistik-art/news_digest` into `/opt/news_digest/app`.
-3. Create `/opt/news_digest/venv` with Python 3.11 and install the package:
-   `/opt/news_digest/venv/bin/pip install -e /opt/news_digest/app`.
-4. Create `/opt/news_digest/data`, owned by `newsdigest:newsdigest`.
-5. Copy `.env.example` to `/opt/news_digest/.env`, edit it locally on the server and set secrets there. Never commit the production `.env`.
-6. Set an absolute SQLite URL:
-   `DATABASE_URL=sqlite:////opt/news_digest/data/news_digest.sqlite3`.
-7. Keep `TELEGRAM_PUBLISHING_ENABLED=false` until the bot token, bot channel permissions and project targets have been verified.
-8. Initialize the database:
-   `cd /opt/news_digest/app && /opt/news_digest/venv/bin/news-digest --init-db`.
-9. Check configuration and RouterAI connectivity:
-   `news-digest --check-config` and `news-digest --test-ai`.
-10. Install this unit as `/etc/systemd/system/news-digest.service`, then run `systemctl daemon-reload`, `systemctl enable --now news-digest.service`.
+1. Create the newsdigest system user and group.
+2. Clone this repository into /opt/news_digest/app.
+3. Create the virtual environment and install dependencies:
+   `/opt/news_digest/venv/bin/python -m pip install -r requirements.txt`.
+4. Create /opt/news_digest/data, owned by newsdigest:newsdigest.
+5. Copy .env.example to /opt/news_digest/.env.
+6. Set an absolute SQLite URL, for example sqlite:////opt/news_digest/data/news_digest.sqlite3.
+7. Set TELEGRAM_BOT_TOKEN, numeric ADMIN_TELEGRAM_IDS and ROUTERAI_API_KEY in the environment file. Never commit secrets.
+8. Keep TELEGRAM_PUBLISHING_ENABLED=false until test delivery has been verified.
+9. Initialize the database with `/opt/news_digest/venv/bin/python -m news_digest.cli --init-db`.
+10. Check configuration with `/opt/news_digest/venv/bin/python -m news_digest.cli --check-config`; optionally test RouterAI with `/opt/news_digest/venv/bin/python -m news_digest.cli --test-ai`.
+11. Install deploy/news-digest.service, then run systemctl daemon-reload and systemctl enable --now news-digest.service.
 
-## Operations
+## Runtime behavior
 
-- Status: `systemctl status news-digest.service`
-- Logs: `journalctl -u news-digest.service -f`
-- Restart after code/config changes: `systemctl restart news-digest.service`
-- Stop: `systemctl stop news-digest.service`
+The service starts `python bot.py` from the repository root. That process runs Telegram polling and the project scheduler concurrently. It must remain active; a missing token or invalid administrator ID configuration is a startup/configuration problem to resolve from logs.
 
-For an application update, pull the intended commit in `/opt/news_digest/app`, install the updated package in the same virtual environment, then restart the service. Back up the SQLite database before schema-changing updates.
+- Status: systemctl status news-digest.service
+- Logs: journalctl -u news-digest.service -f
+- Restart: systemctl restart news-digest.service
 
-## Before enabling Telegram delivery
+For updates, back up SQLite, pull the intended revision, reinstall dependencies from requirements.txt in the same virtual environment and restart the service.
 
-- Verify the bot is administrator in every configured target channel.
-- Verify each target belongs to the intended project.
-- Start with a private test channel and a single test project.
-- Confirm photo delivery, text fallback when no safe image exists, caption length, retries and per-target idempotency.
-- Only then set `TELEGRAM_PUBLISHING_ENABLED=true` and restart the service.
+## Acceptance checks before enabling publishing
 
-## Safety boundaries
+- The service remains active without restart loops.
+- Telegram responds to /news help and /news projects.
+- A configured administrator can create a project; a non-admin is denied.
+- Project ownership checks prevent cross-user access.
+- A test schedule becomes due and executes; scheduler errors are logged and polling continues.
+- A test project collects, processes and queues articles.
+- A private test channel receives a photo post with caption or a text post; retries do not duplicate successful target deliveries.
+- Only after these checks, set TELEGRAM_PUBLISHING_ENABLED=true.
 
-This service runs only `news_digest`. It does not replace or restart ZenDigest, TG2TG1, KontentFabrik or any other systemd unit. The service file uses a dedicated user and only grants write access to `/opt/news_digest/data`.
+The KontentFabrik adapter is not used by this standalone runtime. No KontentFabrik, ZenDigest or other server service is modified by this deployment recipe.

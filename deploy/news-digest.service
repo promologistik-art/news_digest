@@ -1,5 +1,5 @@
 [Unit]
-Description=News Digest multi-project worker scheduler
+Description=News Digest standalone Telegram bot and scheduler
 Wants=network-online.target
 After=network-online.target
 
@@ -9,7 +9,7 @@ User=newsdigest
 Group=newsdigest
 WorkingDirectory=/opt/news_digest/app
 EnvironmentFile=/opt/news_digest/.env
-ExecStart=/opt/news_digest/venv/bin/news-digest --scheduler
+ExecStart=/opt/news_digest/venv/bin/python /opt/news_digest/app/bot.py
 Restart=on-failure
 RestartSec=10
 UMask=0027
