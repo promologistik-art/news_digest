@@ -5,6 +5,7 @@ only for values that cannot reasonably be selected from a menu.
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -120,7 +121,7 @@ async def _project_menu(query, context, project_id: int) -> None:
         rows.append([("▶️ Активировать", f"ui:status:{project_id}:active")])
     rows += [[("◀️ К проектам", "ui:projects"), ("🏠 Меню", MAIN)]]
     await query.edit_message_text(
-        f"📁 <b>{project['name']}</b>\nСтатус: {status_label}\nЯзык: {project['language']}\nЧасовой пояс: {project['timezone']}\n\nВыберите раздел:",
+        f"📁 <b>{html.escape(str(project['name']))}</b>\nСтатус: {status_label}\nЯзык: {project['language']}\nЧасовой пояс: {project['timezone']}\n\nВыберите раздел:",
         parse_mode="HTML", reply_markup=_kb(rows),
     )
 
@@ -129,7 +130,7 @@ async def _input_prompt(query, context, kind: str, project_id: int, prompt: str)
     context.user_data["news_ui_input"] = {"kind": kind, "project_id": project_id}
     await query.edit_message_text(
         prompt + "\n\n/cancel — отменить",
-        reply_markup=_kb([[("✖️ Отмена", f"ui:p:{project_id}")]]),
+        reply_markup=_kb([[("✖️ Отмена", f"ui:cancel:{project_id}")]]),
     )
 
 
@@ -151,7 +152,13 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await show_projects(update, context)
         elif data == "ui:create":
             context.user_data["news_ui_input"] = {"kind": "create_name"}
-            await query.edit_message_text("➕ <b>Создание проекта</b>\n\nКак назвать проект? Отправьте название сообщением.\n\n/cancel — отменить", parse_mode="HTML", reply_markup=_kb([[("✖️ Отмена", MAIN)]]))
+            await query.edit_message_text("➕ <b>Создание проекта</b>\n\nКак назвать проект? Отправьте название сообщением.\n\n/cancel — отменить", parse_mode="HTML", reply_markup=_kb([[("✖️ Отмена", "ui:cancel")]]))
+        elif data == "ui:cancel" or data.startswith("ui:cancel:"):
+            context.user_data.pop("news_ui_input", None)
+            if data.count(":") == 2:
+                await _project_menu(query, context, int(data.split(":")[2]))
+            else:
+                await query.edit_message_text("Ввод отменён.", reply_markup=main_keyboard())
         elif data.startswith("ui:p:"):
             await _project_menu(query, context, int(data.split(":")[2]))
         elif data.startswith("ui:status:"):
@@ -191,8 +198,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await _input_prompt(query, context, "addtarget", int(data.split(":")[2]), "Отправьте @username канала или числовой ID. Бот должен иметь права администратора в канале:")
         elif data.startswith("ui:rules:"):
             pid = int(data.split(":")[2])
-            await service._owned(user_id, pid)
-            rules = await service.projects.get_rules(project_id=pid)
+            rules = await service.get_rules(head_user_id=user_id, project_id=pid)
             summary = (
                 f"Темы: {', '.join(rules.get('topics', [])) or 'не заданы'}\n"
                 f"География: {', '.join(rules.get('geographies', [])) or 'не задана'}\n"
@@ -202,6 +208,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"Минимальная значимость: {rules.get('min_significance', 'по умолчанию')}\n"
                 f"Максимальный возраст новости: {rules.get('max_age_hours', 'по умолчанию')} ч."
             )
+            summary = html.escape(summary)
             rows = [
                 [("🧭 Темы", f"ui:ruleedit:{pid}:topics"), ("🌍 География", f"ui:ruleedit:{pid}:geographies")],
                 [("🚫 Исключить темы", f"ui:ruleedit:{pid}:excluded_topics")],
@@ -222,7 +229,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "max_age_hours": "Укажите максимальный возраст новости в часах (1–8760).",
             }
             context.user_data["news_ui_input"] = {"kind": "rule", "project_id": int(pid), "key": key}
-            await query.edit_message_text(prompts[key] + "\n\n/cancel — отменить", reply_markup=_kb([[("✖️ Отмена", f"ui:rules:{pid}")]]))
+            await query.edit_message_text(prompts[key] + "\n\n/cancel — отменить", reply_markup=_kb([[("✖️ Отмена", f"ui:cancel:{pid}")]]))
         elif data.startswith("ui:schedule:"):
             pid = int(data.split(":")[2])
             rows = [
@@ -233,8 +240,13 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text("🕒 <b>Расписание публикаций</b>\nВыберите готовый вариант:", parse_mode="HTML", reply_markup=_kb(rows))
         elif data.startswith("ui:set-schedule:"):
             _, _, pid, cron = data.split(":", 3)
-            await service.set_schedule(head_user_id=user_id, project_id=int(pid), cron_expression=cron, timezone="Europe/Moscow", enabled=True)
-            await query.edit_message_text("✅ Расписание сохранено (Europe/Moscow).", reply_markup=_kb([[("◀️ К проекту", f"ui:p:{pid}")]]))
+            projects = await service.list_projects(head_user_id=user_id)
+            project = next((item for item in projects if item["id"] == int(pid)), None)
+            if project is None:
+                raise ValueError("Проект не найден.")
+            timezone = project["timezone"]
+            await service.set_schedule(head_user_id=user_id, project_id=int(pid), cron_expression=cron, timezone=timezone, enabled=True)
+            await query.edit_message_text(f"✅ Расписание сохранено ({html.escape(timezone)}).", reply_markup=_kb([[("◀️ К проекту", f"ui:p:{pid}")]]))
         elif data.startswith("ui:settings:"):
             pid = int(data.split(":")[2])
             await query.edit_message_text("🌐 <b>Настройки проекта</b>\n\nВыберите язык:", parse_mode="HTML", reply_markup=_kb([[("Русский", f"ui:lang:{pid}:ru"), ("English", f"ui:lang:{pid}:en")], [("◀️ Назад", f"ui:p:{pid}")]]))
@@ -338,6 +350,9 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update, context):
+        await _deny(update)
+        return
     context.user_data.pop("news_ui_input", None)
     await update.effective_message.reply_text("Ввод отменён.", reply_markup=main_keyboard())
 
