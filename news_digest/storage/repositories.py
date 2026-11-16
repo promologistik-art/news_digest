@@ -73,19 +73,53 @@ class ArticleRepository:
             for article in articles:
                 duplicate = await _fetchone(
                     db,
-                    """
-                    SELECT id, canonical_url
-                    FROM articles
-                    WHERE canonical_url = ? OR content_hash = ?
-                    ORDER BY CASE WHEN canonical_url = ? THEN 0 ELSE 1 END
-                    LIMIT 1
-                    """,
-                    (
-                        article.canonical_url,
-                        article.content_hash,
-                        article.canonical_url,
-                    ),
+                    "SELECT id, canonical_url FROM articles WHERE canonical_url = ?",
+                    (article.canonical_url,),
                 )
+                if duplicate is not None:
+                    article_id = int(duplicate[0])
+                    await db.execute(
+                        """
+                        UPDATE articles SET
+                            title = ?, description = ?,
+                            content = CASE WHEN ? != '' THEN ? ELSE content END,
+                            source_id = COALESCE(source_id, ?),
+                            published_at = COALESCE(?, published_at),
+                            content_hash = ?, image_url = COALESCE(?, image_url)
+                        WHERE id = ?
+                        """,
+                        (
+                            article.title,
+                            article.description,
+                            article.content,
+                            article.content,
+                            source_id,
+                            article.published_at,
+                            article.content_hash,
+                            article.image_url,
+                            article_id,
+                        ),
+                    )
+                    stored.append(
+                        StoredArticle(
+                            article_id=article_id,
+                            canonical_url=article.canonical_url,
+                            inserted=False,
+                        )
+                    )
+                    continue
+
+                substantive_text = len(article.description) + len(article.content) >= 100
+                if substantive_text:
+                    duplicate = await _fetchone(
+                        db,
+                        """
+                        SELECT id, canonical_url FROM articles
+                        WHERE content_hash = ?
+                        ORDER BY id LIMIT 1
+                        """,
+                        (article.content_hash,),
+                    )
                 if duplicate is not None:
                     article_id = int(duplicate[0])
                     stored.append(
@@ -93,11 +127,7 @@ class ArticleRepository:
                             article_id=article_id,
                             canonical_url=article.canonical_url,
                             inserted=False,
-                            duplicate_of=(
-                                article_id
-                                if str(duplicate[1]) != article.canonical_url
-                                else None
-                            ),
+                            duplicate_of=article_id,
                         )
                     )
                     continue
@@ -108,7 +138,6 @@ class ArticleRepository:
                         canonical_url, title, description, content, source_id,
                         published_at, content_hash, image_url
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(canonical_url) DO NOTHING
                     """,
                     (
                         article.canonical_url,
