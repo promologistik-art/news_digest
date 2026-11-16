@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     ai_cost_currency: str = "RUB"
 
     telegram_bot_token: SecretStr = SecretStr("")
-    telegram_admin_ids: str = ""
+    admin_telegram_ids: str = ""
     telegram_publishing_enabled: bool = False
     kontentfabrik_database_url: SecretStr = SecretStr("")
 
@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     collection_timeout_seconds: float = Field(default=25, gt=0, le=300)
 
     @property
-    def telegram_admin_ids_set(self) -> frozenset[int]:
+    def admin_telegram_ids_set(self) -> frozenset[int]:
         values: set[int] = set()
-        for raw in self.telegram_admin_ids.split(","):
+        for raw in self.admin_telegram_ids.split(","):
             value = raw.strip()
             if value:
                 try:
