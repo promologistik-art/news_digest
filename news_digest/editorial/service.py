@@ -137,8 +137,6 @@ def _article_payload(article: NormalizedArticle) -> dict[str, Any]:
 
 def _parse_model(model: type[Any], content: str) -> Any:
     cleaned = content.strip()
-    if cleaned.startswith(""):
-        cleaned = cleaned.strip()
     if cleaned.startswith(chr(96) * 3):
         cleaned = cleaned.removeprefix(chr(96) * 3 + "json")
         cleaned = cleaned.removeprefix(chr(96) * 3).removesuffix(chr(96) * 3).strip()
