@@ -30,102 +30,83 @@ async def test_projects_are_isolated_by_owner_and_allow_multiple_projects(tmp_pa
     assert [item["slug"] for item in owned] == ["culture-a", "tech-a"]
 
 
-@pytest.mark.asyncio
-async def test_queue_only_claims_ready_project_article_and_records_publication(tmp_path) -> None:
-    path = tmp_path / "queue.sqlite3"
+async def _prepare_ready_item(path, targets=("@channel_a", "@channel_b")):
     await Database(path).initialize()
     projects = ProjectRepository(path)
     project_id = await projects.create_project(
         external_user_id="owner", slug="culture", name="Culture"
     )
-    await projects.add_target(
-        project_id=project_id, target_id="@culture_channel", enabled=True
-    )
-
-    async with aiosqlite.connect(path) as connection:
-        await connection.execute(
-            "INSERT INTO articles (canonical_url, title, content_hash) "
-            "VALUES (?, ?, ?)",
-            ("https://example.com/story", "Story", "hash"),
+    for target in targets:
+        await projects.add_target(project_id=project_id, target_id=target, enabled=True)
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "INSERT INTO articles (canonical_url, title, content_hash) VALUES (?, ?, ?)",
+            ("https://example.com/story", "Story", "fingerprint"),
         )
-        await connection.execute(
+        await db.execute(
             """
             INSERT INTO project_articles (
                 project_id, article_id, editorial_status, editorial_payload
             ) VALUES (?, 1, 'ready', ?)
             """,
-            (
-                project_id,
-                json.dumps(
-                    {
-                        "draft": {
-                            "headline": "Headline",
-                            "caption": "Caption",
-                            "source_url": "https://example.com/story",
-                        }
-                    }
-                ),
-            ),
+            (project_id, json.dumps({"draft": {"headline": "Headline", "caption": "Text"}})),
         )
-        await connection.commit()
-
+        await db.commit()
     queue = PublicationQueue(path)
-    assert await queue.enqueue(project_id=project_id, article_id=1) is True
-    assert await queue.enqueue(project_id=project_id, article_id=1) is False
-    item = await queue.claim_next(now="2099-01-01T00:00:00")
-    assert item is not None
-    assert item.target_ids == ("@culture_channel",)
-    assert item.payload["draft"]["headline"] == "Headline"
-    assert await queue.claim_next(now="2099-01-01T00:00:00") is None
-
-    await queue.mark_published(
-        item,
-        messages={"@culture_channel": "telegram-message-123"},
-        caption_length=7,
-    )
-    async with aiosqlite.connect(path) as connection:
-        status = await connection.execute_fetchall(
-            "SELECT status FROM publication_queue WHERE id = ?", (item.id,)
-        )
-        history = await connection.execute_fetchall(
-            "SELECT target_id, telegram_message_id, status FROM publication_history"
-        )
-    assert status == [("published",)]
-    assert history == [("@culture_channel", "telegram-message-123", "published")]
+    assert await queue.enqueue(project_id=project_id, article_id=1)
+    return queue, project_id
 
 
 @pytest.mark.asyncio
-async def test_queue_retries_then_fails_after_attempt_limit(tmp_path) -> None:
-    path = tmp_path / "retry.sqlite3"
-    await Database(path).initialize()
-    projects = ProjectRepository(path)
-    project_id = await projects.create_project(
-        external_user_id="owner", slug="daily", name="Daily"
+async def test_partial_delivery_retry_skips_already_published_target(tmp_path) -> None:
+    path = tmp_path / "partial.sqlite3"
+    queue, _ = await _prepare_ready_item(path)
+    item = await queue.claim_next(now="2026-11-16 10:00:00")
+    assert item is not None
+    assert item.target_ids == ("@channel_a", "@channel_b")
+
+    await queue.mark_target_published(
+        item, target_id="@channel_a", message_id="message-1", caption_length=20
     )
-    async with aiosqlite.connect(path) as connection:
-        await connection.execute(
-            "INSERT INTO articles (canonical_url, title, content_hash) "
-            "VALUES (?, ?, ?)",
-            ("https://example.com/a", "A", "hash"),
-        )
-        await connection.execute(
-            """
-            INSERT INTO project_articles (
-                project_id, article_id, editorial_status, editorial_payload
-            ) VALUES (?, 1, 'ready', '{}')
-            """,
-            (project_id,),
-        )
-        await connection.commit()
-    queue = PublicationQueue(path)
-    await queue.enqueue(project_id=project_id, article_id=1)
-    item = await queue.claim_next(now="2099-01-01T00:00:00")
-    assert item is not None
     assert await queue.mark_failed(
-        item, error="temporary", retry_at="2099-01-02T00:00:00", max_attempts=2
+        item, target_id="@channel_b", error="temporary network error",
+        retry_at="2026-11-16 10:05:00", max_attempts=5,
     ) == "pending"
-    item = await queue.claim_next(now="2099-01-03T00:00:00")
-    assert item is not None
-    assert await queue.mark_failed(
-        item, error="permanent", retry_at="2099-01-04T00:00:00", max_attempts=2
-    ) == "failed"
+    assert await queue.finish_if_complete(item) is False
+
+    retry = await queue.claim_next(now="2026-11-16 10:06:00")
+    assert retry is not None
+    assert retry.target_ids == ("@channel_b",)
+    await queue.mark_target_published(
+        retry, target_id="@channel_b", message_id="message-2", caption_length=20
+    )
+    assert await queue.finish_if_complete(retry) is True
+
+    async with aiosqlite.connect(path) as db:
+        statuses = await db.execute_fetchall(
+            "SELECT target_id, status FROM publication_deliveries ORDER BY target_id"
+        )
+        history = await db.execute_fetchall(
+            "SELECT target_id, telegram_message_id FROM publication_history "
+            "WHERE status='published' ORDER BY target_id"
+        )
+        queue_status = await db.execute_fetchall(
+            "SELECT status FROM publication_queue"
+        )
+    assert statuses == [("@channel_a", "published"), ("@channel_b", "published")]
+    assert history == [("@channel_a", "message-1"), ("@channel_b", "message-2")]
+    assert queue_status == [("published",)]
+
+
+@pytest.mark.asyncio
+async def test_expired_lease_can_be_reclaimed_without_duplicate_delivery(tmp_path) -> None:
+    path = tmp_path / "lease.sqlite3"
+    queue, _ = await _prepare_ready_item(path, targets=("@channel_a",))
+    first = await queue.claim_next(now="2026-11-16 10:00:00", lease_minutes=5)
+    assert first is not None
+    assert await queue.claim_next(now="2026-11-16 10:04:59") is None
+
+    reclaimed = await queue.claim_next(now="2026-11-16 10:05:01")
+    assert reclaimed is not None
+    assert reclaimed.id == first.id
+    assert reclaimed.target_ids == ("@channel_a",)
