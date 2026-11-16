@@ -56,7 +56,7 @@ class KontentFabrikAdapter:
                 """,
                 head_user_id, self.bot_type,
             )
-        except asyncpg.UndefinedTableError as exc:
+        except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError) as exc:
             raise KontentFabrikError(
                 "KontentFabrik registry schema is not available."
             ) from exc
