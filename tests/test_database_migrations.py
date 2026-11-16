@@ -5,7 +5,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from news_digest.storage.database import Database, SCHEMA_VERSION
+from news_digest.storage.database import SCHEMA_VERSION, Database
 
 
 @pytest.mark.asyncio
