@@ -195,3 +195,75 @@ class PublicationQueue:
             )
             await db.commit()
         return status
+
+
+    async def retry_failed(self, *, queue_id: int, scheduled_for: str | None = None) -> bool:
+        """Manually requeue a permanently failed item without losing delivery history."""
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE publication_queue
+                SET status='pending', attempts=0, scheduled_for=?,
+                    lease_until=NULL, last_error=NULL
+                WHERE id=? AND status='failed'
+                """,
+                (scheduled_for, queue_id),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def list_project_queue(
+        self, *, project_id: int, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 200:
+            raise ValueError("Queue limit must be between 1 and 200.")
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT q.id, q.article_id, a.title, q.status, q.attempts,
+                       q.scheduled_for, q.last_error, q.created_at
+                FROM publication_queue q
+                JOIN articles a ON a.id=q.article_id
+                WHERE q.project_id=?
+                ORDER BY q.created_at DESC, q.id DESC LIMIT ?
+                """,
+                (project_id, limit),
+            )
+            rows = await cursor.fetchall()
+        return [
+            {
+                "id": row[0],
+                "article_id": row[1],
+                "title": row[2],
+                "status": row[3],
+                "attempts": row[4],
+                "scheduled_for": row[5],
+                "last_error": row[6],
+                "created_at": row[7],
+            }
+            for row in rows
+        ]
+
+    async def list_deliveries(self, *, queue_id: int) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.database_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT target_id, status, telegram_message_id, caption_length,
+                       error, published_at
+                FROM publication_deliveries
+                WHERE queue_id=? ORDER BY target_id
+                """,
+                (queue_id,),
+            )
+            rows = await cursor.fetchall()
+        return [
+            {
+                "target_id": row[0],
+                "status": row[1],
+                "message_id": row[2],
+                "caption_length": row[3],
+                "error": row[4],
+                "published_at": row[5],
+            }
+            for row in rows
+        ]
