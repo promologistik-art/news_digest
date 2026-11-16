@@ -5,10 +5,7 @@ import json
 import aiosqlite
 import pytest
 
-from news_digest.editorial.models import EditorialAssessment, EditorialDraft
-from news_digest.editorial.service import EditorialResult
 from news_digest.storage.database import Database
-from news_digest.storage.editorial_repository import EditorialRepository
 from news_digest.storage.project_repository import ProjectRepository
 from news_digest.storage.publication_queue import PublicationQueue
 
