@@ -1,0 +1,23 @@
+[Unit]
+Description=News Digest multi-project worker scheduler
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=newsdigest
+Group=newsdigest
+WorkingDirectory=/opt/news_digest/app
+EnvironmentFile=/opt/news_digest/.env
+ExecStart=/opt/news_digest/venv/bin/news-digest --scheduler
+Restart=on-failure
+RestartSec=10
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/news_digest/data
+
+[Install]
+WantedBy=multi-user.target
