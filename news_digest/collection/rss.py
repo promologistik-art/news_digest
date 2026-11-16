@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC
 from email.utils import parsedate_to_datetime
