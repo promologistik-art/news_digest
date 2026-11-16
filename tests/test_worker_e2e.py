@@ -7,6 +7,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
+from news_digest import worker
 from news_digest.ai.routerai import ChatResult, TokenUsage
 from news_digest.collection.normalization import normalize_article
 from news_digest.config import Settings
@@ -14,7 +15,6 @@ from news_digest.storage.database import Database
 from news_digest.storage.project_repository import ProjectRepository
 from news_digest.storage.publication_queue import PublicationQueue
 from news_digest.storage.repositories import ArticleRepository
-from news_digest import worker
 
 
 class FakeCollector:
