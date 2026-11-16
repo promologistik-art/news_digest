@@ -20,7 +20,7 @@ HELP = """Управление новостными проектами:
 /news create slug | Название проекта
 /news status ID | active или paused
 /news sources ID
-/news addsource ID | RSS URL | Название источника
+/news addsource ID | RSS URL | Название источника | shared/project
 /news source-toggle ID | SOURCE_ID | on/off
 /news rules ID | JSON с настройками
 /news targets ID
@@ -107,13 +107,21 @@ async def _dispatch(
         )
 
     if command == "addsource":
-        source_fields = _optional_fields(raw, 2, 3)
+        source_fields = _optional_fields(raw, 2, 4)
         project_text, url = source_fields[:2]
-        name = source_fields[2] if len(source_fields) == 3 else None
+        name = source_fields[2] if len(source_fields) >= 3 else None
+        source_mode = source_fields[3].lower() if len(source_fields) == 4 else "project"
+        if source_mode not in {"shared", "project"}:
+            raise ValueError("Режим источника должен быть shared или project.")
         source_id = await service.add_source(
-            head_user_id=user_id, project_id=int(project_text), url=url, name=name
+            head_user_id=user_id, project_id=int(project_text), url=url,
+            name=name, source_mode=source_mode,
         )
-        return f"Источник добавлен к проекту #{project_text} (ID источника {source_id})."
+        mode_label = "общий" if source_mode == "shared" else "индивидуальный"
+        return (
+            f"Источник добавлен к проекту #{project_text} как {mode_label} "
+            f"(ID источника {source_id})."
+        )
 
     if command == "source-toggle":
         project_text, source_text, enabled_text = _fields(raw, 3)
