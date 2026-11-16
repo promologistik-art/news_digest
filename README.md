@@ -40,7 +40,9 @@ The worker is safe by default: Telegram publishing remains disabled until explic
 
 ## Project scheduling and management
 
-Projects start in `draft` and are processed only after their status is set to `active`. Use `ProjectRepository` to manage per-project RSS sources, editorial rules, Telegram targets and cron schedules. Cron schedules are evaluated in each project's IANA timezone by `news-digest --scheduler`; `--once` remains a manual run of all active projects.
+Projects start in `draft` and are processed only after their status is set to `active`. Use `ProjectRepository` to manage per-project RSS sources, editorial rules, Telegram targets and cron schedules. RSS sources can be `shared` (fetched once for all subscribed active projects) or `project` (fetched for one project). Cron schedules are evaluated in each project's IANA timezone by `news-digest --scheduler`; `--once` remains a manual run of all active projects.
+
+Editorial rules accept `monthly_ai_budget_rub` to cap estimated RouterAI spend for an individual project. The worker reserves estimated request cost before sending each assessment/draft request and settles the reservation using returned token usage. Configure `AI_INPUT_PRICE_PER_MILLION`, `AI_OUTPUT_PRICE_PER_MILLION` and `AI_COST_CURRENCY` to match the active RouterAI model's rates. If RouterAI does not return token counts, the worker records the conservative request estimate and marks it as estimated. In the KontentFabrik head bot, `/news usage PROJECT_ID` reports the current month's project usage.
 
 ## KontentFabrik integration
 
