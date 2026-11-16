@@ -42,7 +42,7 @@ async def _run(args: argparse.Namespace) -> int:
             f"model={settings.ai_model}; timezone={settings.timezone}; "
             f"RouterAI key={'configured' if key_configured else 'missing'}; "
             f"Telegram token={'configured' if settings.telegram_bot_token.get_secret_value() else 'missing'}; "
-            f"Telegram admins={len(settings.telegram_admin_ids_set)}"
+            f"Telegram admins={len(settings.admin_telegram_ids_set)}"
         )
         return 0
 
