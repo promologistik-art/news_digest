@@ -20,4 +20,6 @@ jobs:
       - name: Lint
         run: ruff check . --select E4,E7,E9,F
       - name: Tests
+        env:
+          PYTHONPATH: .
         run: pytest -q
