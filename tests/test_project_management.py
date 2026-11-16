@@ -174,3 +174,24 @@ async def test_monthly_ai_budget_is_validated(tmp_path) -> None:
         await repository.save_rules(
             project_id=project_id, rules={"monthly_ai_budget_rub": -1}
         )
+
+
+
+@pytest.mark.asyncio
+async def test_project_language_and_timezone_can_be_updated(tmp_path) -> None:
+    path = tmp_path / "project-settings.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="international", name="International"
+    )
+    await repository.update_project_settings(
+        project_id=project_id, language="en", timezone="UTC"
+    )
+    project = (await repository.list_projects(external_user_id="owner"))[0]
+    assert project["language"] == "en"
+    assert project["timezone"] == "UTC"
+    with pytest.raises(ValueError, match="timezone"):
+        await repository.update_project_settings(
+            project_id=project_id, language="en", timezone="Unknown/Zone"
+        )
