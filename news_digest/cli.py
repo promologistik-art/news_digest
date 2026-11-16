@@ -9,6 +9,7 @@ import logging
 from news_digest.ai.routerai import RouterAIClient, RouterAIError
 from news_digest.config import Settings
 from news_digest.storage.database import Database
+from news_digest.scheduling.service import ProjectScheduler
 from news_digest.worker import run_once
 
 
@@ -22,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Send a minimal test prompt to the configured AI model.",
     )
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--scheduler", action="store_true")
     return parser
 
 
@@ -73,6 +75,10 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"Provider: {result.provider}")
         return 0
 
+    if args.scheduler:
+        await ProjectScheduler(settings).run_forever()
+        return 0
+
     if args.once:
         totals = await run_once(settings)
         print(
@@ -83,7 +89,7 @@ async def _run(args: argparse.Namespace) -> int:
             print("Publishing is disabled; approved drafts remain safely queued.")
         return 0
 
-    print("Use --check-config, --init-db, --test-ai or --once.")
+    print("Use --check-config, --init-db, --test-ai, --once or --scheduler.")
     return 0
 
 

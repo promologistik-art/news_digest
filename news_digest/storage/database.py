@@ -125,7 +125,11 @@ CREATE TABLE IF NOT EXISTS schedules (
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     cron_expression TEXT NOT NULL,
     timezone TEXT NOT NULL DEFAULT 'Europe/Moscow',
-    enabled INTEGER NOT NULL DEFAULT 0
+    enabled INTEGER NOT NULL DEFAULT 0,
+    next_run_at TEXT,
+    last_run_at TEXT,
+    last_error TEXT,
+    lease_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS publication_queue (
@@ -195,6 +199,13 @@ class Database:
             queue_columns = await connection.execute_fetchall("PRAGMA table_info(publication_queue)")
             if "lease_until" not in {column[1] for column in queue_columns}:
                 await connection.execute("ALTER TABLE publication_queue ADD COLUMN lease_until TEXT")
+            schedule_columns = await connection.execute_fetchall("PRAGMA table_info(schedules)")
+            existing_schedule_columns = {column[1] for column in schedule_columns}
+            for column_name in ("next_run_at", "last_run_at", "last_error", "lease_until"):
+                if column_name not in existing_schedule_columns:
+                    await connection.execute(
+                        f"ALTER TABLE schedules ADD COLUMN {column_name} TEXT"
+                    )
             columns = await connection.execute_fetchall("PRAGMA table_info(ai_usage)")
             if "total_tokens" not in {column[1] for column in columns}:
                 await connection.execute("ALTER TABLE ai_usage ADD COLUMN total_tokens INTEGER")

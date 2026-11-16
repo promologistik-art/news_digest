@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import aiosqlite
+import pytest
+
+from news_digest.storage.database import Database
+from news_digest.storage.project_repository import ProjectRepository
+
+
+@pytest.mark.asyncio
+async def test_project_source_crud_and_settings_are_isolated(tmp_path) -> None:
+    path = tmp_path / "management.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_a = await repository.create_project(
+        external_user_id="owner-a", slug="culture", name="Culture"
+    )
+    project_b = await repository.create_project(
+        external_user_id="owner-a", slug="tech", name="Technology"
+    )
+
+    source_id = await repository.add_source(
+        project_id=project_a, url="https://example.com/feed.xml",
+        name="Example", reliability_score=0.9,
+    )
+    assert [item["id"] for item in await repository.list_sources(project_id=project_a)] == [
+        source_id
+    ]
+    assert await repository.list_sources(project_id=project_b) == []
+
+    await repository.set_source_enabled(
+        project_id=project_a, source_id=source_id, enabled=False
+    )
+    assert (await repository.list_sources(project_id=project_a))[0]["enabled"] is False
+
+    await repository.save_rules(
+        project_id=project_a, rules={"topics": ["books"], "max_age_hours": 48}
+    )
+    assert await repository.get_rules(project_id=project_a) == {
+        "topics": ["books"], "max_age_hours": 48
+    }
+    assert await repository.get_rules(project_id=project_b) == {}
+
+
+@pytest.mark.asyncio
+async def test_schedule_validation_and_due_claim_are_persisted(tmp_path) -> None:
+    path = tmp_path / "schedules.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="daily", name="Daily"
+    )
+    with pytest.raises(ValueError, match="cron"):
+        await repository.set_schedule(
+            project_id=project_id, cron_expression="not a cron"
+        )
+
+    schedule_id = await repository.set_schedule(
+        project_id=project_id, cron_expression="*/5 * * * *",
+        timezone="UTC", enabled=True,
+    )
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "UPDATE schedules SET next_run_at=? WHERE id=?",
+            ((datetime.now(UTC) - timedelta(minutes=1)).replace(tzinfo=None).isoformat(
+                sep=" ", timespec="seconds"
+            ), schedule_id),
+        )
+        await db.commit()
+
+    due = await repository.claim_due_schedules(now_utc=datetime.now(UTC))
+    assert len(due) == 1
+    assert due[0][0] == schedule_id
+    assert await repository.claim_due_schedules(now_utc=datetime.now(UTC)) == []
+    await repository.finish_schedule(
+        schedule_id=schedule_id, cron_expression="*/5 * * * *", timezone="UTC",
+        finished_at=datetime.now(UTC),
+    )
+    assert await repository.claim_due_schedules(now_utc=datetime.now(UTC)) == []
+
+
+@pytest.mark.asyncio
+async def test_only_active_projects_are_selected_by_status(tmp_path) -> None:
+    path = tmp_path / "status.sqlite3"
+    await Database(path).initialize()
+    repository = ProjectRepository(path)
+    project_id = await repository.create_project(
+        external_user_id="owner", slug="news", name="News"
+    )
+    await repository.set_project_status(project_id=project_id, status="active")
+    with pytest.raises(ValueError, match="Unsupported"):
+        await repository.set_project_status(project_id=project_id, status="running")

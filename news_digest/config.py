@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_publishing_enabled: bool = False
+    kontentfabrik_database_url: SecretStr = SecretStr("")
 
     database_url: str = "sqlite:///./data/news_digest.sqlite3"
     collection_user_agent: str = "news_digest/0.1"

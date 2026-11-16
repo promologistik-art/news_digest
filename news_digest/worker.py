@@ -23,7 +23,7 @@ from news_digest.storage.publication_queue import PublicationQueue
 logger = logging.getLogger(__name__)
 
 
-async def run_once(settings: Settings) -> dict[str, int]:
+async def run_once(\n    settings: Settings, *, project_id: int | None = None\n) -> dict[str, int]:
     database = Database(settings.database_path)
     await database.initialize()
     queue = PublicationQueue(settings.database_path)
@@ -31,9 +31,16 @@ async def run_once(settings: Settings) -> dict[str, int]:
     totals = {"collected": 0, "assessed": 0, "queued": 0, "published": 0, "failed": 0}
 
     async with aiosqlite.connect(settings.database_path) as db:
-        projects = await db.execute_fetchall(
-            "SELECT id, name, language FROM projects WHERE status != 'archived' ORDER BY id"
-        )
+        if project_id is None:
+            projects = await db.execute_fetchall(
+                "SELECT id, name, language FROM projects WHERE status = 'active' ORDER BY id"
+            )
+        else:
+            projects = await db.execute_fetchall(
+                "SELECT id, name, language FROM projects "
+                "WHERE status = 'active' AND id = ? ORDER BY id",
+                (project_id,),
+            )
 
     async with RouterAIClient(settings) as ai:
         editorial = EditorialService(ai, EditorialRepository(settings.database_path))
