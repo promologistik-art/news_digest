@@ -10,6 +10,7 @@ Multi-project news collection, editorial processing and Telegram publishing work
 - Shared article collection and deduplication, followed by project-specific relevance and editorial processing.
 - Independent project settings, sources, schedules, destinations, queues and publication history.
 - SQLite for the first deployable iteration, with a repository layer designed to allow PostgreSQL later.
+- Standalone Telegram administration runs in the same process as the scheduler; it does not require KontentFabrik.
 
 ## Development
 
@@ -22,9 +23,66 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Set `ROUTERAI_API_KEY` in the local `.env`. Never commit `.env` or paste the key into chat.
+Set `ROUTERAI_API_KEY` and `TELEGRAM_BOT_TOKEN` in the local `.env`. Never commit `.env` or paste secrets into chat.
 
-## Initial commands
+## Production start (PixiePandora)
+
+The repository root `main.py` is the production entry point. Configure PixiePandora to run:
+
+```bash
+python main.py
+```
+
+It starts both:
+- the timezone-aware project scheduler (checks due schedules every 20 seconds);
+- the standalone Telegram bot, which accepts `/news` commands.
+
+The process stays alive. It does not perform only one collection pass and exit.
+
+Required environment:
+- `ROUTERAI_API_KEY` — RouterAI key;
+- `TELEGRAM_BOT_TOKEN` — token of the bot that will receive admin commands and optionally publish posts;
+- `TELEGRAM_ADMIN_IDS` — comma-separated numeric Telegram user IDs allowed to manage projects.
+
+To find your numeric Telegram ID, open the bot and send `/id`. Add the returned number to `TELEGRAM_ADMIN_IDS` in PixiePandora and restart/redeploy the container. `/id` is intentionally available before the allowlist is configured; all management commands remain blocked until an ID is allowlisted.
+
+Publishing is separately controlled by `TELEGRAM_PUBLISHING_ENABLED=false` by default. Keep it false while configuring projects and destinations. Enable it only when you are ready for approved posts to be sent to configured channels.
+
+## Telegram commands
+
+Send `/news help` to the bot.
+
+| Command | Purpose |
+|---|---|
+| `/news projects` | List your projects |
+| `/news create slug | Project name` | Create a project (starts as draft) |
+| `/news status ID | active/paused/draft/archived` | Change project status |
+| `/news settings ID | language | timezone` | Set language and IANA timezone |
+| `/news sources ID` | List RSS sources |
+| `/news addsource ID | RSS URL | Name | shared/project` | Add an RSS source |
+| `/news source-toggle ID | SOURCE_ID | on/off` | Enable or disable a source |
+| `/news rules ID | JSON` | Save editorial rules |
+| `/news targets ID` | List Telegram destinations |
+| `/news addtarget ID | @channel | Title` | Add a destination (disabled by default) |
+| `/news target-toggle ID | @channel | on/off` | Enable or disable a destination |
+| `/news schedule ID | cron | Europe/Moscow | on/off` | Configure a project schedule |
+| `/news usage ID` | Show current-month AI usage and budget |
+
+Example setup:
+
+```text
+/news create cinema | Кино и сериалы
+/news addsource 1 | https://example.com/rss.xml | Example News | shared
+/news rules 1 | {"topics":["кино","сериалы"],"geographies":["Россия","Мир"],"excluded_topics":["реклама"],"min_significance":60,"max_age_hours":48,"monthly_ai_budget_rub":50}
+/news addtarget 1 | @my_channel | Мой канал
+/news target-toggle 1 | @my_channel | on
+/news schedule 1 | 0 */2 * * * | Europe/Moscow | on
+/news status 1 | active
+```
+
+The bot checks Telegram numeric IDs against `TELEGRAM_ADMIN_IDS` before running management commands. Project records are also scoped to the Telegram user who created them.
+
+## Manual maintenance commands
 
 ```bash
 news-digest --check-config
@@ -34,50 +92,21 @@ news-digest --once
 news-digest --scheduler
 ```
 
-`--test-ai` sends one short request to RouterAI and reports the returned model, provider (if supplied) and token usage. It does not publish anything.
+- `--test-ai` sends one short request to RouterAI and reports the returned model and token usage. It does not publish anything.
+- `--once` performs one processing cycle for all active projects.
+- `--scheduler` runs only the schedule worker, without Telegram command polling.
+- `python main.py` is the combined production mode.
 
-The worker is safe by default: Telegram publishing remains disabled until explicitly configured.
+## Project scheduling and AI budgets
 
-## Project scheduling and management
+Projects start in `draft` and are processed only after their status is set to `active`. RSS sources can be `shared` (fetched once for all subscribed active projects) or `project` (fetched for one project). Cron schedules are evaluated in each project's IANA timezone.
 
-Projects start in `draft` and are processed only after their status is set to `active`. Use `ProjectRepository` to manage per-project RSS sources, editorial rules, Telegram targets and cron schedules. RSS sources can be `shared` (fetched once for all subscribed active projects) or `project` (fetched for one project). Cron schedules are evaluated in each project's IANA timezone by `news-digest --scheduler`; `--once` remains a manual run of all active projects.
-
-Editorial rules accept `monthly_ai_budget_rub` to cap estimated RouterAI spend for an individual project. The worker reserves estimated request cost before sending each assessment/draft request and settles the reservation using returned token usage. Configure `AI_INPUT_PRICE_PER_MILLION`, `AI_OUTPUT_PRICE_PER_MILLION`, `AI_CACHE_READ_PRICE_PER_MILLION` and `AI_COST_CURRENCY` to match the active RouterAI model's rates. Cached prompt tokens are billed at the separate cache-read rate when RouterAI reports them. If RouterAI does not return token counts, the worker records the conservative request estimate and marks it as estimated. In the KontentFabrik head bot, `/news usage PROJECT_ID` reports the current month's project usage.
+Editorial rules accept `monthly_ai_budget_rub` to cap estimated RouterAI spend for an individual project. The worker reserves estimated request cost before sending each assessment/draft request and settles the reservation using returned token usage. Configure `AI_INPUT_PRICE_PER_MILLION`, `AI_OUTPUT_PRICE_PER_MILLION`, `AI_CACHE_READ_PRICE_PER_MILLION` and `AI_COST_CURRENCY` to match the active RouterAI model's rates. Cached prompt tokens are billed at the separate cache-read rate when RouterAI reports them. If RouterAI does not return token counts, the worker records the conservative request estimate and marks it as estimated.
 
 ## KontentFabrik integration
 
-The optional `KontentFabrikAdapter` reads the existing `kf_users`, `user_bindings` and `workers` registry tables using a read-only PostgreSQL connection. It resolves the head-bot Telegram identity to the `news_digest` worker user ID; project data and schedules remain in this worker's own SQLite database. Configure `KONTENTFABRIK_DATABASE_URL` with a read-only database role. A `news_digest` worker and user binding must first be registered in KontentFabrik. This repository does not modify KontentFabrik or its database schema.
-
-
-### Mounting management commands in KontentFabrik
-
-The handlers are implemented in this repository, but they are not active in the running KontentFabrik bot until its application registers them. The host-side change is intentionally not included here.
-
-Install this project in the head-bot environment and register the handlers during application startup:
-
-```python
-from news_digest.config import Settings
-from news_digest.integrations.kontentfabrik import (
-    KontentFabrikAdapter,
-    KontentFabrikProjectService,
-    build_handlers,
-)
-from news_digest.storage.project_repository import ProjectRepository
-
-settings = Settings()
-adapter = KontentFabrikAdapter(
-    settings.kontentfabrik_database_url.get_secret_value()
-)
-service = KontentFabrikProjectService(
-    adapter,
-    ProjectRepository(settings.database_path),
-)
-application.add_handlers(build_handlers(service))
-```
-
-The head bot needs a read-only PostgreSQL role for the KontentFabrik registry and write access to the worker's own SQLite data directory. Do not give the adapter write access to the KontentFabrik database. The binding must already exist for the `news_digest` worker. Available commands are shown by `/news help`; project access is checked against the resolved worker-user binding on every operation.
-
+An optional `KontentFabrikAdapter` remains available for a future integration. It reads the existing `kf_users`, `user_bindings` and `workers` registry tables using a read-only PostgreSQL connection. It is not required for the standalone Telegram bot, and this repository does not modify KontentFabrik or its database schema.
 
 ## Server deployment
 
-A dedicated systemd unit template and a deployment checklist for `swe` are in [`deploy/`](deploy/README.md). The unit runs only `news_digest` under its own unprivileged account and uses an isolated application directory, virtual environment, environment file and SQLite data directory. These files are templates; no server commands have been executed.
+A dedicated systemd unit template and a deployment checklist for `swe` are in [`deploy/`](deploy/README.md). These files are templates; no server commands have been executed.
