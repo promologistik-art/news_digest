@@ -121,3 +121,22 @@ async def test_usage_command_reports_project_monthly_spend(tmp_path) -> None:
 
     assert "0.0000 ₽ из 50.00 ₽" in report
     assert "Запросов: 0" in report
+
+
+
+@pytest.mark.asyncio
+async def test_project_settings_command_updates_language_and_timezone(tmp_path) -> None:
+    path = tmp_path / "settings-command.sqlite3"
+    await Database(path).initialize()
+    service = KontentFabrikProjectService(FakeAdapter(), ProjectRepository(path))
+    created = await _dispatch(service, 12345, "create", "global | Global")
+    project_id = int(created.split("ID ")[1].split(")")[0])
+
+    result = await _dispatch(
+        service, 12345, "settings", f"{project_id} | en | UTC"
+    )
+
+    assert "язык en" in result
+    project = (await service.list_projects(head_user_id=12345))[0]
+    assert project["language"] == "en"
+    assert project["timezone"] == "UTC"
