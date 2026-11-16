@@ -1,4 +1,4 @@
-"""PixiePandora container entry point: run the persistent project scheduler."""
+"""PixiePandora container entry point: run the standalone Telegram bot."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from news_digest.cli import main as cli_main
 
 
 if __name__ == "__main__":
-    # PixiePandora starts the project with `python main.py`.
-    # Default to the long-running scheduler; explicit CLI flags remain supported.
+    # The persistent runtime combines Telegram polling with the project scheduler.
     if len(sys.argv) == 1:
-        sys.argv.append("--scheduler")
+        sys.argv.append("--bot")
     cli_main()
