@@ -2,7 +2,7 @@
 
 import pytest
 
-from news_digest.collection.rss import _entry_to_article, _validate_public_url
+from news_digest.collection.rss import _entry_to_article, _image_url, _validate_public_url
 
 
 def test_entry_maps_title_link_date_and_image() -> None:
@@ -31,3 +31,27 @@ async def test_localhost_feed_is_rejected() -> None:
 async def test_literal_private_ip_is_rejected() -> None:
     with pytest.raises(ValueError, match="non-public"):
         await _validate_public_url("http://127.0.0.1/feed.xml")
+
+
+
+def test_non_image_media_is_not_selected_as_article_image() -> None:
+    entry = {
+        "media_content": [
+            {"url": "https://example.com/clip.mp4", "type": "video/mp4"}
+        ]
+    }
+    assert _image_url(entry) is None
+
+
+def test_invalid_image_url_does_not_discard_valid_article() -> None:
+    article = _entry_to_article(
+        {
+            "title": "Valid article",
+            "link": "https://example.com/story",
+            "summary": "A valid summary.",
+            "media_thumbnail": [{"url": "javascript:alert(1)"}],
+        }
+    )
+    assert article is not None
+    assert article.canonical_url == "https://example.com/story"
+    assert article.image_url is None
