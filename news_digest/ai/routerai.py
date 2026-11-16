@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Self
 
 import httpx
 
@@ -52,7 +53,7 @@ class RouterAIClient:
         self._client = http_client
         self._owns_client = http_client is None
 
-    async def __aenter__(self) -> "RouterAIClient":
+    async def __aenter__(self) -> Self:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self
@@ -102,10 +103,9 @@ class RouterAIClient:
             for attempt in range(self.max_retries + 1):
                 try:
                     response = await client.post(url, headers=headers, json=payload)
-                    if response.status_code == 429 or response.status_code >= 500:
-                        if attempt < self.max_retries:
-                            await asyncio.sleep(min(2 ** attempt, 8))
-                            continue
+                    if (response.status_code == 429 or response.status_code >= 500) and attempt < self.max_retries:
+                        await asyncio.sleep(min(2 ** attempt, 8))
+                        continue
                     if response.is_error:
                         # Do not echo response body: gateways may include request metadata.
                         raise RouterAIError(
