@@ -317,8 +317,7 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return
         if kind == "rule":
             key = pending["key"]
-            await service._owned(user_id, pid)
-            rules = await service.projects.get_rules(project_id=pid)
+            rules = await service.get_rules(head_user_id=user_id, project_id=pid)
             if key in {"topics", "geographies", "excluded_topics"}:
                 rules[key] = [part.strip() for part in value.split(",") if part.strip()]
             elif key in {"min_significance", "max_age_hours"}:
