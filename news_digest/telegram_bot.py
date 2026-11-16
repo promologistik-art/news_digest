@@ -14,6 +14,7 @@ from news_digest.storage.database import Database
 from news_digest.storage.editorial_repository import EditorialRepository
 from news_digest.storage.project_repository import ProjectRepository
 from news_digest.telegram_service import StandaloneProjectService
+from news_digest.telegram_commands import HELP, dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ async def _news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     settings: Settings = context.application.bot_data["settings"]
-    admins = settings.telegram_admin_ids
+    admins = settings.telegram_admin_ids_set
     if not admins:
         await message.reply_text(
             "Команды отключены: в окружении бота не задан ADMIN_TELEGRAM_IDS."
