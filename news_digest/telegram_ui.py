@@ -9,14 +9,13 @@ import json
 import logging
 import re
 from datetime import datetime
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, BotCommand
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from news_digest.telegram_service import StandaloneProjectService
 
 logger = logging.getLogger(__name__)
 
-CANCEL = "ui:cancel"
 MAIN = "ui:main"
 
 
@@ -192,6 +191,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await _input_prompt(query, context, "addtarget", int(data.split(":")[2]), "Отправьте @username канала или числовой ID. Бот должен иметь права администратора в канале:")
         elif data.startswith("ui:rules:"):
             pid = int(data.split(":")[2])
+            await service._owned(user_id, pid)
             rules = await service.projects.get_rules(project_id=pid)
             text = "📝 <b>Редакционные правила</b>\n\nТекущие настройки:\n<code>" + json.dumps(rules, ensure_ascii=False, indent=2)[:3000] + "</code>"
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=_kb([[("✏️ Изменить правила", f"ui:editrules:{pid}")], [("◀️ Назад", f"ui:p:{pid}")]]))
