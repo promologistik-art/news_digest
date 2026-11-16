@@ -101,3 +101,23 @@ async def test_kontentfabrik_command_can_subscribe_to_shared_source(tmp_path) ->
     assert "общий" in result
     sources = await service.list_sources(head_user_id=12345, project_id=project_id)
     assert sources[0]["mode"] == "shared"
+
+
+
+@pytest.mark.asyncio
+async def test_usage_command_reports_project_monthly_spend(tmp_path) -> None:
+    path = tmp_path / "usage-command.sqlite3"
+    await Database(path).initialize()
+    service = KontentFabrikProjectService(FakeAdapter(), ProjectRepository(path))
+    created = await _dispatch(service, 12345, "create", "usage | Usage")
+    project_id = int(created.split("ID ")[1].split(")")[0])
+    await service.save_rules(
+        head_user_id=12345,
+        project_id=project_id,
+        rules={"monthly_ai_budget_rub": 50},
+    )
+
+    report = await _dispatch(service, 12345, "usage", str(project_id))
+
+    assert "0.0000 ₽ из 50.00 ₽" in report
+    assert "Запросов: 0" in report
