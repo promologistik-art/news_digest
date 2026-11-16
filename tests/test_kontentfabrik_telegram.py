@@ -78,5 +78,5 @@ async def test_status_and_boolean_commands_are_validated(tmp_path) -> None:
     await _dispatch(service, 12345, "create", "test | Test")
     with pytest.raises(ValueError, match="Unsupported"):
         await _dispatch(service, 12345, "status", "1 | running")
-    with pytest.raises(ValueError, match="on or off"):
+    with pytest.raises(ValueError, match="on или off"):
         await _dispatch(service, 12345, "target-toggle", "1 | @test | maybe")
