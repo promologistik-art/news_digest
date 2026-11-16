@@ -18,23 +18,6 @@ from news_digest.telegram_commands import HELP, dispatch
 
 logger = logging.getLogger(__name__)
 
-HELP = """Самостоятельный бот news-digest
-/news projects — список проектов
-/news create slug | Название — создать проект
-/news status ID | active или paused — изменить статус
-/news settings ID | language | timezone — настройки
-/news sources ID — список RSS
-/news addsource ID | RSS URL | Название | shared/project — добавить RSS
-/news source-toggle ID | SOURCE_ID | on/off — включить RSS
-/news rules ID | JSON — редакционные правила
-/news targets ID — список каналов
-/news addtarget ID | @channel или -100... | Название — добавить канал
-/news target-toggle ID | @channel | on/off — включить канал
-/news schedule ID | cron | Europe/Moscow | on/off — расписание
-/news usage ID — расходы RouterAI
-
-Проект создаётся в статусе draft. Для обработки установите active.
-"""
 
 
 async def _news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -61,12 +44,8 @@ async def _news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     command = context.args[0].lower()
     raw = " ".join(context.args[1:]).strip()
     try:
-        # Reuse the established command grammar; the service is standalone and
-        # resolves ownership from this bot's own SQLite users table.
-        from news_digest.integrations.kontentfabrik.telegram import _dispatch
-
         service: StandaloneProjectService = context.application.bot_data["service"]
-        response = await _dispatch(service, user.id, command, raw)
+        response = await dispatch(service, user.id, command, raw)
     except (ValueError, PermissionError) as exc:
         response = f"Не удалось выполнить команду: {exc}"
     except Exception:
