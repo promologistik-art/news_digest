@@ -16,25 +16,26 @@ Run under a dedicated unprivileged newsdigest user. Do not reuse ZenDigest direc
 
 1. Create the newsdigest system user and group.
 2. Clone this repository into /opt/news_digest/app.
-3. Create the virtual environment and install the package.
+3. Create the virtual environment and install dependencies:
+   `/opt/news_digest/venv/bin/python -m pip install -r requirements.txt`.
 4. Create /opt/news_digest/data, owned by newsdigest:newsdigest.
 5. Copy .env.example to /opt/news_digest/.env.
 6. Set an absolute SQLite URL, for example sqlite:////opt/news_digest/data/news_digest.sqlite3.
 7. Set TELEGRAM_BOT_TOKEN, numeric ADMIN_TELEGRAM_IDS and ROUTERAI_API_KEY in the environment file. Never commit secrets.
 8. Keep TELEGRAM_PUBLISHING_ENABLED=false until test delivery has been verified.
-9. Initialize the database with news-digest --init-db.
-10. Check configuration with news-digest --check-config; optionally test RouterAI with news-digest --test-ai.
+9. Initialize the database with `/opt/news_digest/venv/bin/python -m news_digest.cli --init-db`.
+10. Check configuration with `/opt/news_digest/venv/bin/python -m news_digest.cli --check-config`; optionally test RouterAI with `/opt/news_digest/venv/bin/python -m news_digest.cli --test-ai`.
 11. Install deploy/news-digest.service, then run systemctl daemon-reload and systemctl enable --now news-digest.service.
 
 ## Runtime behavior
 
-The service starts news-digest --bot. That process runs Telegram polling and the project scheduler concurrently. It must remain active; a missing token or invalid administrator ID configuration is a startup/configuration problem to resolve from logs.
+The service starts `python bot.py` from the repository root. That process runs Telegram polling and the project scheduler concurrently. It must remain active; a missing token or invalid administrator ID configuration is a startup/configuration problem to resolve from logs.
 
 - Status: systemctl status news-digest.service
 - Logs: journalctl -u news-digest.service -f
 - Restart: systemctl restart news-digest.service
 
-For updates, back up SQLite, pull the intended revision, reinstall the package in the same virtual environment and restart the service.
+For updates, back up SQLite, pull the intended revision, reinstall dependencies from requirements.txt in the same virtual environment and restart the service.
 
 ## Acceptance checks before enabling publishing
 
