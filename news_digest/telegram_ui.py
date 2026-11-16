@@ -193,10 +193,36 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             pid = int(data.split(":")[2])
             await service._owned(user_id, pid)
             rules = await service.projects.get_rules(project_id=pid)
-            text = "📝 <b>Редакционные правила</b>\n\nТекущие настройки:\n<code>" + json.dumps(rules, ensure_ascii=False, indent=2)[:3000] + "</code>"
-            await query.edit_message_text(text, parse_mode="HTML", reply_markup=_kb([[("✏️ Изменить правила", f"ui:editrules:{pid}")], [("◀️ Назад", f"ui:p:{pid}")]]))
-        elif data.startswith("ui:editrules:"):
-            await _input_prompt(query, context, "rules", int(data.split(":")[2]), "Отправьте JSON-объект редакционных правил. Пример: {\"language\":\"ru\"}")
+            summary = (
+                f"Темы: {', '.join(rules.get('topics', [])) or 'не заданы'}\n"
+                f"География: {', '.join(rules.get('geographies', [])) or 'не задана'}\n"
+                f"Исключить: {', '.join(rules.get('excluded_topics', [])) or 'нет'}\n"
+                f"Аудитория: {rules.get('audience', 'не задана')}\n"
+                f"Стиль: {rules.get('style_guide', 'не задан')}\n"
+                f"Минимальная значимость: {rules.get('min_significance', 'по умолчанию')}\n"
+                f"Максимальный возраст новости: {rules.get('max_age_hours', 'по умолчанию')} ч."
+            )
+            rows = [
+                [("🧭 Темы", f"ui:ruleedit:{pid}:topics"), ("🌍 География", f"ui:ruleedit:{pid}:geographies")],
+                [("🚫 Исключить темы", f"ui:ruleedit:{pid}:excluded_topics")],
+                [("👥 Аудитория", f"ui:ruleedit:{pid}:audience"), ("✍️ Стиль", f"ui:ruleedit:{pid}:style_guide")],
+                [("⭐ Значимость", f"ui:ruleedit:{pid}:min_significance"), ("🕓 Давность", f"ui:ruleedit:{pid}:max_age_hours")],
+                [("◀️ Назад", f"ui:p:{pid}")],
+            ]
+            await query.edit_message_text("📝 <b>Редакционные правила</b>\n\n" + summary + "\n\nВыберите, что изменить:", parse_mode="HTML", reply_markup=_kb(rows))
+        elif data.startswith("ui:ruleedit:"):
+            _, _, pid, key = data.split(":")
+            prompts = {
+                "topics": "Перечислите интересующие темы через запятую. Например: искусственный интеллект, экономика, космос",
+                "geographies": "Перечислите страны или регионы через запятую. Например: Россия, Европа, США",
+                "excluded_topics": "Перечислите темы, которые нужно исключить, через запятую.",
+                "audience": "Опишите целевую аудиторию обычным текстом.",
+                "style_guide": "Опишите желаемый стиль новостных публикаций.",
+                "min_significance": "Укажите минимальную значимость от 0 до 100.",
+                "max_age_hours": "Укажите максимальный возраст новости в часах (1–8760).",
+            }
+            context.user_data["news_ui_input"] = {"kind": "rule", "project_id": int(pid), "key": key}
+            await query.edit_message_text(prompts[key] + "\n\n/cancel — отменить", reply_markup=_kb([[("✖️ Отмена", f"ui:rules:{pid}")]]))
         elif data.startswith("ui:schedule:"):
             pid = int(data.split(":")[2])
             rows = [
@@ -277,13 +303,22 @@ async def text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             context.user_data.pop("news_ui_input", None)
             await update.effective_message.reply_text(f"✅ Канал добавлен (ID записи {target_pk}), пока выключен. Включите его кнопкой после проверки прав бота.", reply_markup=_kb([[("📤 К каналам", f"ui:targets:{pid}")], [("◀️ К проекту", f"ui:p:{pid}")]]))
             return
-        if kind == "rules":
-            rules = json.loads(value)
-            if not isinstance(rules, dict):
-                raise ValueError("Нужен JSON-объект.")
+        if kind == "rule":
+            key = pending["key"]
+            rules = await service.projects.get_rules(project_id=pid)
+            await service._owned(user_id, pid)
+            if key in {"topics", "geographies", "excluded_topics"}:
+                rules[key] = [part.strip() for part in value.split(",") if part.strip()]
+            elif key in {"min_significance", "max_age_hours"}:
+                try:
+                    rules[key] = int(value)
+                except ValueError as exc:
+                    raise ValueError("Введите целое число.") from exc
+            else:
+                rules[key] = value
             await service.save_rules(head_user_id=user_id, project_id=pid, rules=rules)
             context.user_data.pop("news_ui_input", None)
-            await update.effective_message.reply_text("✅ Редакционные правила сохранены.", reply_markup=_kb([[("◀️ К проекту", f"ui:p:{pid}")]]))
+            await update.effective_message.reply_text("✅ Правило сохранено.", reply_markup=_kb([[("📝 К правилам", f"ui:rules:{pid}")], [("◀️ К проекту", f"ui:p:{pid}")]]))
             return
         if kind == "timezone":
             from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
