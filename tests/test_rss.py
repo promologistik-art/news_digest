@@ -2,7 +2,7 @@
 
 import pytest
 
-from news_digest.collection.rss import _entry_to_article, _published_at, _validate_public_url
+from news_digest.collection.rss import _entry_to_article, _validate_public_url
 
 
 def test_entry_maps_title_link_date_and_image() -> None:
