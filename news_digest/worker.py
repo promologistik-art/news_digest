@@ -55,6 +55,7 @@ async def run_once(
                 EditorialRepository(settings.database_path),
                 input_price_per_million=settings.ai_input_price_per_million,
                 output_price_per_million=settings.ai_output_price_per_million,
+                cache_read_price_per_million=settings.ai_cache_read_price_per_million,
                 cost_currency=settings.ai_cost_currency,
             )
             for current_project_id, project_name, language in projects:
