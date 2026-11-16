@@ -159,6 +159,15 @@ async def test_end_to_end_collection_editorial_queue_and_delivery(
         "published": 1,
         "failed": 0,
     }
+
+    repeated_totals = await worker.run_once(settings)
+    assert repeated_totals == {
+        "collected": 0,
+        "assessed": 0,
+        "queued": 0,
+        "published": 0,
+        "failed": 0,
+    }
     async with aiosqlite.connect(database_path) as db:
         editorial = await db.execute_fetchall(
             "SELECT editorial_status FROM project_articles WHERE project_id=?",
@@ -176,6 +185,11 @@ async def test_end_to_end_collection_editorial_queue_and_delivery(
             "WHERE project_id=? ORDER BY id",
             (project_id,),
         )
+        history_count = await db.execute_fetchall(
+            "SELECT COUNT(*) FROM publication_history WHERE project_id=? "
+            "AND status='published'",
+            (project_id,),
+        )
 
     assert editorial == [("ready",)]
     assert queue == [("published", 1)]
@@ -184,3 +198,4 @@ async def test_end_to_end_collection_editorial_queue_and_delivery(
         ("editorial_assessment", 120, 60),
         ("editorial_draft", 120, 60),
     ]
+    assert history_count == [(1,)]
