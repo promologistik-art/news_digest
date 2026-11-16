@@ -26,7 +26,12 @@ async def test_chat_parses_response_and_usage() -> None:
                 "model": "deepseek/deepseek-v4.1-flash",
                 "provider": "DeepSeek",
                 "choices": [{"message": {"role": "assistant", "content": "готово"}}],
-                "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "total_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 4},
+                },
             },
         )
 
@@ -40,6 +45,7 @@ async def test_chat_parses_response_and_usage() -> None:
     assert result.request_id == "chatcmpl-123"
     assert result.usage is not None
     assert result.usage.total_tokens == 15
+    assert result.usage.cached_prompt_tokens == 4
 
 
 @pytest.mark.asyncio
