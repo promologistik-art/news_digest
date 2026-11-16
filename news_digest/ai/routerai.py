@@ -24,6 +24,7 @@ class TokenUsage:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    cached_prompt_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,10 +153,19 @@ class RouterAIClient:
         usage_data = data.get("usage")
         usage = None
         if isinstance(usage_data, dict):
+            prompt_details = usage_data.get("prompt_tokens_details") or {}
+            cached_tokens = _optional_int(
+                prompt_details.get("cached_tokens")
+                if isinstance(prompt_details, dict)
+                else None
+            )
+            if cached_tokens is None:
+                cached_tokens = _optional_int(usage_data.get("cache_read_input_tokens"))
             usage = TokenUsage(
                 prompt_tokens=_optional_int(usage_data.get("prompt_tokens")),
                 completion_tokens=_optional_int(usage_data.get("completion_tokens")),
                 total_tokens=_optional_int(usage_data.get("total_tokens")),
+                cached_prompt_tokens=cached_tokens,
             )
         provider = data.get("provider")
         return ChatResult(
