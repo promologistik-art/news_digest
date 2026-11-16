@@ -47,3 +47,32 @@ Editorial rules accept `monthly_ai_budget_rub` to cap estimated RouterAI spend f
 ## KontentFabrik integration
 
 The optional `KontentFabrikAdapter` reads the existing `kf_users`, `user_bindings` and `workers` registry tables using a read-only PostgreSQL connection. It resolves the head-bot Telegram identity to the `news_digest` worker user ID; project data and schedules remain in this worker's own SQLite database. Configure `KONTENTFABRIK_DATABASE_URL` with a read-only database role. A `news_digest` worker and user binding must first be registered in KontentFabrik. This repository does not modify KontentFabrik or its database schema.
+
+
+### Mounting management commands in KontentFabrik
+
+The handlers are implemented in this repository, but they are not active in the running KontentFabrik bot until its application registers them. The host-side change is intentionally not included here.
+
+Install this project in the head-bot environment and register the handlers during application startup:
+
+```python
+from news_digest.config import Settings
+from news_digest.integrations.kontentfabrik import (
+    KontentFabrikAdapter,
+    KontentFabrikProjectService,
+    build_handlers,
+)
+from news_digest.storage.project_repository import ProjectRepository
+
+settings = Settings()
+adapter = KontentFabrikAdapter(
+    settings.kontentfabrik_database_url.get_secret_value()
+)
+service = KontentFabrikProjectService(
+    adapter,
+    ProjectRepository(settings.database_path),
+)
+application.add_handlers(build_handlers(service))
+```
+
+The head bot needs a read-only PostgreSQL role for the KontentFabrik registry and write access to the worker's own SQLite data directory. Do not give the adapter write access to the KontentFabrik database. The binding must already exist for the `news_digest` worker. Available commands are shown by `/news help`; project access is checked against the resolved worker-user binding on every operation.
