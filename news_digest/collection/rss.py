@@ -13,8 +13,8 @@ from time import struct_time
 from typing import Any, Self
 from urllib.parse import urljoin, urlsplit
 
-import feedparser
 import aiosqlite
+import feedparser
 import httpx
 
 from news_digest.collection.normalization import NormalizedArticle, normalize_article
