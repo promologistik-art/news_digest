@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     operation TEXT NOT NULL,
     input_tokens INTEGER,
     output_tokens INTEGER,
+    total_tokens INTEGER,
     cost_amount REAL,
     cost_currency TEXT,
     request_id TEXT,
@@ -176,4 +177,7 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.path) as connection:
             await connection.executescript(SCHEMA)
+            columns = await connection.execute_fetchall("PRAGMA table_info(ai_usage)")
+            if "total_tokens" not in {column[1] for column in columns}:
+                await connection.execute("ALTER TABLE ai_usage ADD COLUMN total_tokens INTEGER")
             await connection.commit()
