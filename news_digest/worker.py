@@ -46,11 +46,13 @@ async def run_once(
 
     async with RouterAIClient(settings) as ai:
         editorial = EditorialService(ai, EditorialRepository(settings.database_path))
-        for project_id, project_name, language in projects:
-            totals["collected"] += await collector.collect_project(project_id, database, settings)
+        for current_project_id, project_name, language in projects:
+            totals["collected"] += await collector.collect_project(
+                current_project_id, database, settings
+            )
             async with aiosqlite.connect(settings.database_path) as db:
                 rules_cursor = await db.execute(
-                    "SELECT rules_json FROM project_rules WHERE project_id=?", (project_id,)
+                    "SELECT rules_json FROM project_rules WHERE project_id=?", (current_project_id,)
                 )
                 rules_row = await rules_cursor.fetchone()
                 articles_cursor = await db.execute(
@@ -61,7 +63,7 @@ async def run_once(
                     WHERE pa.project_id=? AND pa.editorial_status='new'
                     ORDER BY COALESCE(a.published_at, a.collected_at) DESC LIMIT 100
                     """,
-                    (project_id,),
+                    (current_project_id,),
                 )
                 articles = await articles_cursor.fetchall()
             rules = json.loads(rules_row[0]) if rules_row else {}
@@ -85,7 +87,7 @@ async def run_once(
                 )
                 try:
                     result = await editorial.process_and_save(
-                        article, brief, project_id=project_id, article_id=article_id
+                        article, brief, project_id=current_current_project_id, article_id=article_id
                     )
                     totals["assessed"] += 1
                     if result.draft is not None and await queue.enqueue(
@@ -95,7 +97,7 @@ async def run_once(
                 except (RouterAIError, EditorialError, sqlite3.Error, ValueError):
                     logger.exception(
                         "Editorial processing failed for project=%s article=%s",
-                        project_id, article_id,
+                        current_project_id, article_id,
                     )
 
     if settings.telegram_publishing_enabled:
