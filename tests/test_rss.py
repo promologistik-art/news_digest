@@ -1,7 +1,5 @@
 """Tests for RSS entry mapping and public-host validation."""
 
-from email.utils import parsedate_to_datetime
-
 import pytest
 
 from news_digest.collection.rss import _entry_to_article, _published_at, _validate_public_url
