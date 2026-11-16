@@ -134,10 +134,12 @@ class EditorialRepository:
         model: str,
         operation: str,
         input_tokens: int | None,
+        cached_input_tokens: int | None,
         output_tokens: int | None,
         total_tokens: int | None,
         input_price_per_million: float,
         output_price_per_million: float,
+        cache_read_price_per_million: float,
         currency: str,
         request_id: str | None,
         reservation_id: int | None = None,
@@ -145,9 +147,12 @@ class EditorialRepository:
     ) -> float:
         """Persist actual token usage and settle a reservation; estimate only if usage is absent."""
         has_usage = input_tokens is not None and output_tokens is not None
+        cached_tokens = min(max(cached_input_tokens or 0, 0), input_tokens or 0)
+        billable_input_tokens = max((input_tokens or 0) - cached_tokens, 0)
         cost = (
             (
-                input_tokens * input_price_per_million
+                billable_input_tokens * input_price_per_million
+                + cached_tokens * cache_read_price_per_million
                 + output_tokens * output_price_per_million
             )
             / 1_000_000
@@ -159,9 +164,9 @@ class EditorialRepository:
                 """
                 INSERT INTO ai_usage (
                     project_id, provider, model, operation, input_tokens,
-                    output_tokens, total_tokens, cost_amount, cost_currency,
-                    cost_estimated, request_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cached_input_tokens, output_tokens, total_tokens, cost_amount,
+                    cost_currency, cost_estimated, request_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -169,6 +174,7 @@ class EditorialRepository:
                     model,
                     operation,
                     input_tokens,
+                    cached_tokens,
                     output_tokens,
                     total_tokens,
                     cost,
@@ -204,6 +210,7 @@ class EditorialRepository:
             cursor = await db.execute(
                 """
                 SELECT COUNT(*), COALESCE(SUM(input_tokens), 0),
+                       COALESCE(SUM(cached_input_tokens), 0),
                        COALESCE(SUM(output_tokens), 0),
                        COALESCE(SUM(total_tokens), 0),
                        COALESCE(SUM(cost_amount), 0),
@@ -223,8 +230,9 @@ class EditorialRepository:
         return {
             "requests": int(row[0]),
             "input_tokens": int(row[1]),
-            "output_tokens": int(row[2]),
-            "total_tokens": int(row[3]),
-            "cost": float(row[4]),
-            "estimated_requests": int(row[5]),
+            "cached_input_tokens": int(row[2]),
+            "output_tokens": int(row[3]),
+            "total_tokens": int(row[4]),
+            "cost": float(row[5]),
+            "estimated_requests": int(row[6]),
         }
