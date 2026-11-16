@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from pathlib import Path
 
+from news_digest.ai.routerai import RouterAIClient, RouterAIError
 from news_digest.config import Settings
 from news_digest.storage.database import Database
 
@@ -15,6 +15,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="news-digest")
     parser.add_argument("--check-config", action="store_true")
     parser.add_argument("--init-db", action="store_true")
+    parser.add_argument(
+        "--test-ai",
+        action="store_true",
+        help="Send a minimal test prompt to the configured AI model.",
+    )
     parser.add_argument("--once", action="store_true")
     return parser
 
@@ -27,9 +32,11 @@ async def _run(args: argparse.Namespace) -> int:
     )
 
     if args.check_config:
+        key_configured = bool(settings.routerai_api_key.get_secret_value())
         print(
             f"Configuration OK; provider={settings.ai_provider}; "
-            f"model={settings.ai_model}; timezone={settings.timezone}"
+            f"model={settings.ai_model}; timezone={settings.timezone}; "
+            f"RouterAI key={'configured' if key_configured else 'missing'}"
         )
         return 0
 
@@ -39,6 +46,32 @@ async def _run(args: argparse.Namespace) -> int:
         print(f"Database initialized: {settings.database_path}")
         return 0
 
+    if args.test_ai:
+        if not settings.routerai_api_key.get_secret_value():
+            print("ROUTERAI_API_KEY is not configured. Add it to .env; do not commit the file.")
+            return 2
+        client = RouterAIClient(settings)
+        try:
+            result = await client.chat(
+                messages=[{"role": "user", "content": "Ответь одним словом: готово"}],
+                max_tokens=32,
+                operation="connection_test",
+            )
+        except RouterAIError as exc:
+            print(f"RouterAI test failed: {exc}")
+            return 1
+        print(f"RouterAI OK; model={result.model}; answer={result.content!r}")
+        if result.usage:
+            print(
+                "Tokens: "
+                f"input={result.usage.prompt_tokens}, "
+                f"output={result.usage.completion_tokens}, "
+                f"total={result.usage.total_tokens}"
+            )
+        if result.provider:
+            print(f"Provider: {result.provider}")
+        return 0
+
     if args.once:
         if not settings.telegram_publishing_enabled:
             print("Publishing is disabled. Configure and explicitly enable it before publishing.")
@@ -46,7 +79,7 @@ async def _run(args: argparse.Namespace) -> int:
             print("Worker pipeline is not wired yet; no publication was attempted.")
         return 0
 
-    print("Use --check-config, --init-db or --once.")
+    print("Use --check-config, --init-db, --test-ai or --once.")
     return 0
 
 
