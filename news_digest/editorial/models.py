@@ -19,6 +19,7 @@ class EditorialBrief(BaseModel):
     excluded_topics: list[str] = Field(default_factory=list)
     min_significance: int = Field(default=55, ge=0, le=100)
     max_age_hours: int = Field(default=72, ge=1, le=8760)
+    monthly_ai_budget_rub: float | None = Field(default=None, ge=0)
 
 
 class EditorialAssessment(BaseModel):
