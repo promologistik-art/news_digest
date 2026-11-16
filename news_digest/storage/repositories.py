@@ -1,7 +1,5 @@
 """Persistence helpers for shared sources/articles and project associations."""
 
-"""Persistence helpers for shared sources/articles and project associations."""
-
 from __future__ import annotations
 
 from collections.abc import Iterable
