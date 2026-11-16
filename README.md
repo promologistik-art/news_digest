@@ -76,3 +76,8 @@ application.add_handlers(build_handlers(service))
 ```
 
 The head bot needs a read-only PostgreSQL role for the KontentFabrik registry and write access to the worker's own SQLite data directory. Do not give the adapter write access to the KontentFabrik database. The binding must already exist for the `news_digest` worker. Available commands are shown by `/news help`; project access is checked against the resolved worker-user binding on every operation.
+
+
+## Server deployment
+
+A dedicated systemd unit template and a deployment checklist for `swe` are in [`deploy/`](deploy/README.md). The unit runs only `news_digest` under its own unprivileged account and uses an isolated application directory, virtual environment, environment file and SQLite data directory. These files are templates; no server commands have been executed.
